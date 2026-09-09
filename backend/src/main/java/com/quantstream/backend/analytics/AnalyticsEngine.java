@@ -91,6 +91,13 @@ public class AnalyticsEngine {
         );
 
         // 4. Construct unified AnalyticsSnapshot DTO
+        Map<String, Double> factorScores = Map.of(
+                "trend", convictionScore.trendScore(),
+                "momentum", convictionScore.momentumScore(),
+                "rsi", convictionScore.rsiScore(),
+                "volume", convictionScore.volumeScore()
+        );
+
         Map<String, Double> scoreBreakdown = Map.of(
                 "trend", convictionScore.trendContribution(),
                 "momentum", convictionScore.momentumContribution(),
@@ -119,6 +126,7 @@ public class AnalyticsEngine {
                 rvolResult.value(),
                 convictionScore.score(),
                 convictionScore.category(),
+                factorScores,
                 scoreBreakdown,
                 signals,
                 convictionScore.explanations(),

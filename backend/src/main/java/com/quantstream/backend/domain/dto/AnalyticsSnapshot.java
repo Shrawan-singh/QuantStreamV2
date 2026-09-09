@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Unified real-time DTO carrying price action, technical indicators, and conviction score.
+ * Unified real-time DTO carrying price action, technical indicators, and explainable conviction score.
  * Delivered to frontend clients via WebSocket and REST APIs.
  */
 public record AnalyticsSnapshot(
@@ -33,6 +33,7 @@ public record AnalyticsSnapshot(
         double relativeVolume,
         double convictionScore,
         ScoreCategory scoreCategory,
+        Map<String, Double> factorScores,
         Map<String, Double> scoreBreakdown,
         Map<String, Signal> signals,
         List<String> explanations,
@@ -41,6 +42,9 @@ public record AnalyticsSnapshot(
         Instant timestamp
 ) {
     public AnalyticsSnapshot {
+        if (factorScores != null) {
+            factorScores = Collections.unmodifiableMap(factorScores);
+        }
         if (scoreBreakdown != null) {
             scoreBreakdown = Collections.unmodifiableMap(scoreBreakdown);
         }

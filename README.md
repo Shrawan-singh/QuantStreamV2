@@ -73,7 +73,69 @@ npm run dev
 
 *Note: The frontend runs on `http://localhost:3000` by default.*
 
-## Accessing the Dashboard
-
 Once both servers are running, open your web browser and navigate to:
 **http://localhost:3000**
+
+---
+
+## Supported Market Universes
+
+QuantStream enforces strict universe validation against a fixed instrument registry:
+
+*   **Simulation Mode Universe (40 NSE Equities):**
+    *   **Banking & Financials:** `RELIANCE`, `HDFCBANK`, `ICICIBANK`, `SBIN`, `KOTAKBANK`, `AXISBANK`, `BAJFINANCE`, `BAJAJFINSV`
+    *   **IT & Tech:** `TCS`, `INFY`, `HCLTECH`, `WIPRO`, `TECHM`, `LTIM`
+    *   **Automotive:** `TATAMOTORS`, `MARUTI`, `M&M`, `BAJAJ-AUTO`
+    *   **Energy & Utilities:** `NTPC`, `POWERGRID`, `ONGC`, `COALINDIA`, `BPCL`
+    *   **FMCG & Retail:** `ITC`, `HINDUNILVR`, `TITAN`, `NESTLEIND`, `ASIANPAINT`
+    *   **Metals & Infrastructure:** `LT`, `TATASTEEL`, `JSWSTEEL`, `HINDALCO`, `ADANIENT`, `ADANIPORTS`, `ULTRACEMCO`, `GRASIM`
+    *   **Pharma & Healthcare:** `SUNPHARMA`, `CIPLA`, `DRREDDY`, `APOLLOHOSP`
+*   **Live Mode Universe (7 US Equities via Finnhub):**
+    *   `AAPL`, `MSFT`, `GOOGL`, `AMZN`, `NVDA`, `TSLA`, `META`
+
+Curated subset on Dashboard features 10 benchmark equities (`RELIANCE`, `TCS`, `HDFCBANK`, `INFY`, `ICICIBANK`, `SBIN`, `BHARTIARTL`, `ITC`, `LT`, `TATAMOTORS`), while Watchlist, Scanner, and Search query the complete 40-symbol universe.
+
+---
+
+## Continuous Conviction Scoring Engine
+
+QuantStream calculates a continuous **0–100** quantitative conviction score combining four deterministic technical indicators with equal weighting ($0.25$ each):
+
+$$\text{Final Score} = 0.25 \times \text{Trend} + 0.25 \times \text{Momentum} + 0.25 \times \text{RSI} + 0.25 \times \text{Relative Volume}$$
+
+### Factor Normalization Formulas & Thresholds
+
+1.  **Trend Score (0–100):**
+    Measures percentage divergence of the current price from the 20-period Simple Moving Average (SMA):
+    $$\Delta\% = \frac{\text{Price} - \text{SMA}_{20}}{\text{SMA}_{20}} \times 100$$
+    $$\text{Trend Score} = \text{clamp}\left(50.0 + \left(\frac{\Delta\%}{2.0\%}\right) \times 50.0,\; 0.0,\; 100.0\right)$$
+    *A divergence of $\pm 2.0\%$ maps continuously to $[0.0, 100.0]$ with $0.0\%$ divergence at $50.0$ (neutral).*
+
+2.  **Momentum Score (0–100):**
+    Measures 10-period price rate of change:
+    $$\text{ROC}\% = \frac{\text{Price}_t - \text{Price}_{t-10}}{\text{Price}_{t-10}} \times 100$$
+    $$\text{Momentum Score} = \text{clamp}\left(50.0 + \left(\frac{\text{ROC}\%}{2.0\%}\right) \times 50.0,\; 0.0,\; 100.0\right)$$
+
+3.  **RSI Score (0–100):**
+    Direct Wilder 14-period Relative Strength Index:
+    $$\text{RSI Score} = \text{clamp}(\text{RSI}_{14},\; 0.0,\; 100.0)$$
+
+4.  **Relative Volume Score (0–100):**
+    Measures volume ratio relative to 20-period average volume:
+    $$\text{RVOL} = \frac{\text{Volume}}{\text{AvgVolume}_{20}}$$
+    $$\text{Volume Score} = \text{clamp}(\text{RVOL} \times 50.0,\; 0.0,\; 100.0)$$
+    *Baseline $1.0\times$ volume maps to $50.0$; elevated $2.0\times$ volume maps to $100.0$.*
+
+### Score Explainability
+All factor scores and contributions are rounded to 1 decimal place:
+*   Example: Trend `78.0` (contrib `19.5`), Momentum `64.0` (contrib `16.0`), RSI `71.0` (contrib `17.8`), Volume `83.0` (contrib `20.8`) $\to$ **Conviction Score: `74.0`**.
+
+---
+
+## Real-Time Alert Engine & Lifecycle
+
+*   **Supported Alert Types:** `PRICE_ABOVE`, `PRICE_BELOW`, `CONVICTION_ABOVE`, `CONVICTION_BELOW`.
+*   **One-Shot Trigger Semantics:** Alerts transition to `TRIGGERED` exactly once upon crossing the threshold to prevent duplicate event spamming. Users can re-arm triggered alerts via the UI or `PUT /api/alerts/{id}/reset`.
+*   **End-to-End Pipeline:**
+    $$\text{Incoming Tick} \longrightarrow \text{Worker Pool} \longrightarrow \text{Alert Evaluator} \longrightarrow \text{PostgreSQL Audit Log} \longrightarrow \text{STOMP /topic/alerts} \longrightarrow \text{Frontend Modal/Toast}$$
+*   **Audit History:** Every trigger records the trigger timestamp, exact trigger value, and threshold crossed in `alert_trigger_history`.

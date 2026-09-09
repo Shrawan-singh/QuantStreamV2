@@ -17,6 +17,7 @@ export function useQuantStreamWebSocket() {
     provider: 'finnhub',
     status: 'ACTIVE'
   });
+  const [latestAlertEvent, setLatestAlertEvent] = useState(null);
   const clientRef = useRef(null);
   const lastPricesRef = useRef({});
 
@@ -142,6 +143,15 @@ export function useQuantStreamWebSocket() {
               console.error('Failed to parse STOMP message', e);
             }
           });
+
+          client.subscribe('/topic/alerts', (message) => {
+            try {
+              const alertNotif = JSON.parse(message.body);
+              setLatestAlertEvent(alertNotif);
+            } catch (e) {
+              console.error('Failed to parse alert notification', e);
+            }
+          });
         },
         onDisconnect: () => {
           setConnectionStatus('DISCONNECTED');
@@ -191,6 +201,7 @@ export function useQuantStreamWebSocket() {
     connectionStatus,
     lastTickTime,
     totalTicksReceived,
+    latestAlertEvent,
     marketConfig,
     apiBase: API_BASE,
   };

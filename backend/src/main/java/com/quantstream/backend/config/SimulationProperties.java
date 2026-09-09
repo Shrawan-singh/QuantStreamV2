@@ -1,5 +1,6 @@
 package com.quantstream.backend.config;
 
+import com.quantstream.backend.domain.InstrumentRegistry;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -21,13 +22,7 @@ public class SimulationProperties {
     private long intervalMs = 500L;
 
     @NotEmpty
-    private List<String> symbols = new ArrayList<>(List.of(
-            "RELIANCE",
-            "TCS",
-            "INFY",
-            "HDFCBANK",
-            "ICICIBANK"
-    ));
+    private List<String> symbols = new ArrayList<>(InstrumentRegistry.getSimulationSymbols());
 
     public boolean isAutoStart() {
         return autoStart;

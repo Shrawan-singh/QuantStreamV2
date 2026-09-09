@@ -1,6 +1,7 @@
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.analytics.AnalyticsEngine;
+import com.quantstream.backend.domain.InstrumentRegistry;
 import com.quantstream.backend.domain.dto.AnalyticsSnapshot;
 import com.quantstream.backend.domain.entity.WatchlistItemEntity;
 import com.quantstream.backend.repository.WatchlistRepository;
@@ -43,6 +44,7 @@ public class WatchlistController {
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
             map.put("symbol", item.getSymbol());
+            map.put("companyName", InstrumentRegistry.getCompanyName(item.getSymbol()));
             map.put("notes", item.getNotes());
             map.put("addedAt", item.getAddedAt());
 
@@ -58,7 +60,7 @@ public class WatchlistController {
     public record AddWatchlistRequest(String symbol, String notes) {}
 
     /**
-     * Adds an instrument to the user watchlist.
+     * Adds an instrument to the user watchlist after strict universe validation.
      */
     @PostMapping
     public ResponseEntity<?> addToWatchlist(@RequestBody AddWatchlistRequest request) {
@@ -67,11 +69,19 @@ public class WatchlistController {
         }
 
         String symbol = request.symbol().trim().toUpperCase();
+
+        // Validate strictly against the supported instrument registry
+        if (!InstrumentRegistry.isSupported(symbol)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Instrument not found in the supported market universe."));
+        }
+
+        // Prevent duplicate entries
         if (watchlistRepository.existsBySymbol(symbol)) {
             return ResponseEntity.badRequest().body(Map.of("error", "Symbol already in watchlist"));
         }
 
-        WatchlistItemEntity entity = new WatchlistItemEntity(symbol, request.notes());
+        String notes = request.notes() != null ? request.notes().trim() : "";
+        WatchlistItemEntity entity = new WatchlistItemEntity(symbol, notes);
         WatchlistItemEntity saved = watchlistRepository.save(entity);
         return ResponseEntity.ok(saved);
     }

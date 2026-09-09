@@ -33,12 +33,18 @@ const PIPELINE_STEPS = [
   { num: '05', name: 'VISUALIZE', desc: 'Real-time terminal output',     icon: 'query_stats' },
 ];
 
+const CURATED_SYMBOLS = new Set([
+  'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
+  'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'TATAMOTORS',
+]);
+
 export default function Home() {
   const {
     marketData,
     connectionStatus,
     totalTicksReceived,
     lastTickTime,
+    latestAlertEvent,
     marketConfig,
     apiBase,
   } = useQuantStreamWebSocket();
@@ -46,8 +52,17 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [dashboardView, setDashboardView] = useState('CURATED');
 
   const stocks = useMemo(() => Object.values(marketData || {}), [marketData]);
+
+  const displayedStocks = useMemo(() => {
+    if (dashboardView === 'CURATED') {
+      const curated = stocks.filter((s) => CURATED_SYMBOLS.has(s.symbol));
+      return curated.length > 0 ? curated : stocks.slice(0, 10);
+    }
+    return stocks;
+  }, [stocks, dashboardView]);
 
   const activeStock = useMemo(() => {
     if (selectedSymbol && marketData[selectedSymbol]) return marketData[selectedSymbol];
@@ -95,6 +110,7 @@ export default function Home() {
           totalTicks={totalTicksReceived}
           marketConfig={marketConfig}
           allInstruments={stocks}
+          apiBase={apiBase}
           onSelectSymbol={setSelectedSymbol}
           onSelectTab={setActiveTab}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -161,21 +177,61 @@ export default function Home() {
 
                 <div className="stat-card">
                   <div className="stat-card-label">DATA SOURCE</div>
-                  <div className="flex-row items-center gap-sm font-bold" style={{ fontSize: '0.85rem', color: marketConfig?.mode === 'live' ? 'var(--bullish)' : 'var(--neutral)' }}>
+                  <div className="flex-row items-center gap-sm font-bold" style={{ fontSize: '0.8rem', color: marketConfig?.mode === 'live' ? 'var(--bullish)' : 'var(--neutral)' }}>
                     <Activity size={14} />
-                    <span>{marketConfig?.mode === 'live' ? 'Live Finnhub (US)' : 'Simulation (NSE)'}</span>
+                    <span>{marketConfig?.mode === 'live' ? 'LIVE MARKET • US EQUITIES' : 'SIMULATION • NSE EQUITIES'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Market Overview Grid */}
-              <div className="flex-row items-center justify-between mb-base">
-                <h3 className="section-title">MARKET OVERVIEW</h3>
+              <div className="flex-row items-center justify-between mb-base flex-wrap gap-sm">
+                <div className="flex-row items-center gap-md">
+                  <h3 className="section-title" style={{ margin: 0 }}>MARKET OVERVIEW</h3>
+                  <div
+                    className="flex-row items-center gap-xs"
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      padding: '2px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <button
+                      className="btn-ghost"
+                      style={{
+                        padding: '3px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: '3px',
+                        background: dashboardView === 'CURATED' ? 'var(--accent-indigo)' : 'transparent',
+                        color: dashboardView === 'CURATED' ? '#ffffff' : 'var(--text-muted)',
+                      }}
+                      onClick={() => setDashboardView('CURATED')}
+                    >
+                      CURATED (10)
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      style={{
+                        padding: '3px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: '3px',
+                        background: dashboardView === 'ALL' ? 'var(--accent-indigo)' : 'transparent',
+                        color: dashboardView === 'ALL' ? '#ffffff' : 'var(--text-muted)',
+                      }}
+                      onClick={() => setDashboardView('ALL')}
+                    >
+                      FULL UNIVERSE ({stocks.length})
+                    </button>
+                  </div>
+                </div>
                 <span className="section-subtitle">Click any instrument to inspect</span>
               </div>
 
               <MarketOverviewGrid
-                stocks={stocks}
+                stocks={displayedStocks}
                 selectedSymbol={activeStock?.symbol}
                 onSelectSymbol={setSelectedSymbol}
                 onDrillDown={(sym) => {
@@ -240,7 +296,7 @@ export default function Home() {
                       </h1>
                       <span className="badge-exchange">{exchBadge}</span>
                       <span className={`badge badge-pill ${activeStock.source === 'LIVE_PROVIDER' ? 'badge-bullish' : 'badge-neutral'}`}>
-                        {activeStock.source === 'LIVE_PROVIDER' ? 'LIVE STREAM' : 'SIMULATION'}
+                        {activeStock.source === 'LIVE_PROVIDER' ? 'LIVE MARKET STREAM' : 'SIMULATION FEED'}
                       </span>
                     </div>
                     <p className="text-secondary mt-sm" style={{ fontSize: '0.88rem' }}>
@@ -362,7 +418,7 @@ export default function Home() {
           )}
 
           {/* ═══ TAB: ALERTS ═══ */}
-          {activeTab === 'ALERTS' && <AlertsManager apiBase={apiBase} />}
+          {activeTab === 'ALERTS' && <AlertsManager apiBase={apiBase} latestAlertEvent={latestAlertEvent} />}
 
           {/* ═══ TAB: ENGINE HEALTH ═══ */}
           {activeTab === 'ENGINE' && <EngineHealthView apiBase={apiBase} />}

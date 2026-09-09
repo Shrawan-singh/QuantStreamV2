@@ -40,16 +40,16 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
       <div className="flex-row justify-between items-start flex-wrap gap-md mb-base">
         <div>
           <div className="flex-row items-center gap-sm">
-            <span className="label-caps text-accent">MARKET DATA ENGINE</span>
-            <span className="text-muted" style={{ fontSize: '0.75rem' }}>• Source Ingestion Architecture</span>
+            <span className="label-caps text-accent">DATA SOURCE UX</span>
+            <span className="text-muted" style={{ fontSize: '0.75rem' }}>• Ingestion Engine Architecture</span>
           </div>
-          <h2 className="section-title mt-xs">Choose Your Market Data</h2>
+          <h2 className="section-title mt-xs">Market Data Source &amp; Configuration</h2>
         </div>
 
         <div className="badge-pill flex-row items-center gap-sm" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', padding: '6px 14px' }}>
-          <span className="text-muted" style={{ fontSize: '0.75rem' }}>ACTIVE ENGINE:</span>
+          <span className="live-dot" style={{ width: '6px', height: '6px' }} />
           <span className={`mono font-bold ${isLiveActive ? 'text-bullish' : 'text-neutral'}`} style={{ fontSize: '0.8rem' }}>
-            {isLiveActive ? 'LIVE FINNHUB (US EQUITIES)' : 'SIMULATION (NSE EQUITIES)'}
+            {isLiveActive ? '● STREAMING DATA SOURCE: LIVE MARKET • US EQUITIES' : '● STREAMING DATA SOURCE: SIMULATION • NSE EQUITIES'}
           </span>
         </div>
       </div>

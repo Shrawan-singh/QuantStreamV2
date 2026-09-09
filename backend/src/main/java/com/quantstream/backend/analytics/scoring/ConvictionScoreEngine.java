@@ -15,11 +15,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Deterministic, explainable scoring engine that combines quantitative technical
- * indicators into a unified Conviction Score on a 0–100 scale.
+ * Deterministic, continuous scoring engine that combines quantitative technical
+ * indicators into a unified Conviction Score on a continuous 0–100 scale.
  *
- * <p>Weights are fully configurable. Indicators contribute proportionally based on
- * their evaluated {@link Signal} (POSITIVE = 1.0, NEUTRAL = 0.5, NEGATIVE = 0.0, NOT_READY = 0.5).</p>
+ * <h3>Continuous Normalization Model:</h3>
+ * <ul>
+ *   <li><b>Trend (0–100)</b>: Linear mapping of price divergence relative to 20-period SMA:
+ *       <pre>diffPct = ((Price - SMA) / SMA) * 100.0
+ * trendScore = clamp(50.0 + (diffPct / 2.0) * 50.0, 0.0, 100.0)</pre>
+ *       A divergence of &plusmn;2.0% maps continuously to [0, 100], with 0.0% divergence at 50.0 (neutral).
+ *   </li>
+ *   <li><b>Momentum (0–100)</b>: Linear mapping of 10-period price rate of change:
+ *       <pre>momentumScore = clamp(50.0 + (momentumPct / 2.0) * 50.0, 0.0, 100.0)</pre>
+ *       A price change of &plusmn;2.0% over lookback maps continuously to [0, 100], with 0.0% change at 50.0.
+ *   </li>
+ *   <li><b>RSI (0–100)</b>: Direct Wilder RSI index value:
+ *       <pre>rsiScore = clamp(RSI, 0.0, 100.0)</pre>
+ *   </li>
+ *   <li><b>Relative Volume (0–100)</b>: Linear mapping of volume ratio relative to 20-period average:
+ *       <pre>volumeScore = clamp(RVOL * 50.0, 0.0, 100.0)</pre>
+ *       Baseline 1.0x volume maps to 50.0; elevated 2.0x volume maps to 100.0.
+ *   </li>
+ * </ul>
+ *
+ * <p>Composite Conviction Score:
+ * <pre>finalScore = (w_trend * trendScore + w_mom * momentumScore + w_rsi * rsiScore + w_vol * volumeScore) / totalWeight</pre>
+ * Clamped to [0.0, 100.0] and rounded to one decimal place.</p>
  */
 @Component
 public class ConvictionScoreEngine {
@@ -61,68 +82,97 @@ public class ConvictionScoreEngine {
             totalWeight = 100.0;
         }
 
-        // 1. Trend component (evaluates primarily SMA, supported by EMA if available)
-        Signal trendSignal = (smaResult != null && smaResult.ready())
-                ? smaResult.signal()
-                : ((emaResult != null && emaResult.ready()) ? emaResult.signal() : Signal.NOT_READY);
-        double trendRatio = signalToRatio(trendSignal);
-        double trendScore = (properties.trendWeight() / totalWeight) * 100.0 * trendRatio;
+        double wTrend = properties.trendWeight() / totalWeight;
+        double wMomentum = properties.momentumWeight() / totalWeight;
+        double wRsi = properties.rsiWeight() / totalWeight;
+        double wVolume = properties.volumeWeight() / totalWeight;
 
-        // 2. Momentum component
-        Signal momentumSignal = (momentumResult != null && momentumResult.ready())
-                ? momentumResult.signal()
-                : Signal.NOT_READY;
-        double momentumRatio = signalToRatio(momentumSignal);
-        double momentumScore = (properties.momentumWeight() / totalWeight) * 100.0 * momentumRatio;
+        // 1. Trend Factor Score [0 - 100]
+        double trendScore = 50.0;
+        Signal trendSignal = Signal.NOT_READY;
+        IndicatorResult trendIndicator = (smaResult != null && smaResult.ready()) ? smaResult : emaResult;
+        if (trendIndicator != null && trendIndicator.ready() && snapshot != null && snapshot.latestPrice() != null) {
+            double benchmarkVal = trendIndicator.value();
+            if (benchmarkVal > 0.0) {
+                double currentPrice = snapshot.latestPrice().doubleValue();
+                double diffPct = ((currentPrice - benchmarkVal) / benchmarkVal) * 100.0;
+                trendScore = clamp(50.0 + (diffPct / 2.0) * 50.0, 0.0, 100.0);
+            }
+            trendSignal = scoreToSignal(trendScore);
+        }
 
-        // 3. RSI component
-        Signal rsiSignal = (rsiResult != null && rsiResult.ready())
-                ? rsiResult.signal()
-                : Signal.NOT_READY;
-        double rsiRatio = signalToRatio(rsiSignal);
-        double rsiScore = (properties.rsiWeight() / totalWeight) * 100.0 * rsiRatio;
+        // 2. Momentum Factor Score [0 - 100]
+        double momentumScore = 50.0;
+        Signal momentumSignal = Signal.NOT_READY;
+        if (momentumResult != null && momentumResult.ready()) {
+            double momentumVal = momentumResult.value();
+            momentumScore = clamp(50.0 + (momentumVal / 2.0) * 50.0, 0.0, 100.0);
+            momentumSignal = scoreToSignal(momentumScore);
+        }
 
-        // 4. Volume component
-        Signal volumeSignal = (rvolResult != null && rvolResult.ready())
-                ? rvolResult.signal()
-                : Signal.NOT_READY;
-        double volumeRatio = signalToRatio(volumeSignal);
-        double volumeScore = (properties.volumeWeight() / totalWeight) * 100.0 * volumeRatio;
+        // 3. RSI Factor Score [0 - 100]
+        double rsiScore = 50.0;
+        Signal rsiSignal = Signal.NOT_READY;
+        if (rsiResult != null && rsiResult.ready()) {
+            rsiScore = clamp(rsiResult.value(), 0.0, 100.0);
+            rsiSignal = scoreToSignal(rsiScore);
+        }
 
-        double compositeScore = clamp(trendScore + momentumScore + rsiScore + volumeScore, 0.0, 100.0);
-        compositeScore = roundOneDecimal(compositeScore);
+        // 4. Relative Volume Factor Score [0 - 100]
+        double volumeScore = 50.0;
+        Signal volumeSignal = Signal.NOT_READY;
+        if (rvolResult != null && rvolResult.ready()) {
+            double rvol = rvolResult.value();
+            volumeScore = clamp(rvol * 50.0, 0.0, 100.0);
+            volumeSignal = scoreToSignal(volumeScore);
+        }
+
+        // Round factor scores to 1 decimal place
+        trendScore = roundOneDecimal(trendScore);
+        momentumScore = roundOneDecimal(momentumScore);
+        rsiScore = roundOneDecimal(rsiScore);
+        volumeScore = roundOneDecimal(volumeScore);
+
+        // Weighted contributions
+        double trendContribution = roundOneDecimal(wTrend * trendScore);
+        double momentumContribution = roundOneDecimal(wMomentum * momentumScore);
+        double rsiContribution = roundOneDecimal(wRsi * rsiScore);
+        double volumeContribution = roundOneDecimal(wVolume * volumeScore);
+
+        // Composite Final Score: rounded to 1 decimal place
+        double rawFinalScore = (wTrend * trendScore) + (wMomentum * momentumScore) + (wRsi * rsiScore) + (wVolume * volumeScore);
+        double compositeScore = roundOneDecimal(clamp(rawFinalScore, 0.0, 100.0));
 
         ScoreCategory category = ScoreCategory.fromScore(compositeScore);
 
-        // Build explanations
+        // Build explainability list
         List<String> explanations = new ArrayList<>(4);
-        if (smaResult != null && smaResult.ready() && snapshot != null) {
-            explanations.add(String.format("Trend: %s (Price ₹%s vs SMA ₹%.2f)",
-                    trendSignal, snapshot.latestPrice(), smaResult.value()));
+        if (trendIndicator != null && trendIndicator.ready() && snapshot != null) {
+            explanations.add(String.format("Trend: %.1f (Price ₹%s vs SMA ₹%.2f)",
+                    trendScore, snapshot.latestPrice(), trendIndicator.value()));
         } else {
-            explanations.add("Trend: Neutral (Awaiting sufficient history for SMA)");
+            explanations.add("Trend: 50.0 (Awaiting sufficient history for SMA)");
         }
 
         if (momentumResult != null && momentumResult.ready()) {
-            explanations.add(String.format("Momentum: %s (Lookback change: %+.2f%%)",
-                    momentumSignal, momentumResult.value()));
+            explanations.add(String.format("Momentum: %.1f (Lookback change: %+.2f%%)",
+                    momentumScore, momentumResult.value()));
         } else {
-            explanations.add("Momentum: Neutral (Awaiting lookback period)");
+            explanations.add("Momentum: 50.0 (Awaiting lookback period)");
         }
 
         if (rsiResult != null && rsiResult.ready()) {
-            explanations.add(String.format("RSI: %s (14-period index: %.1f)",
-                    rsiSignal, rsiResult.value()));
+            explanations.add(String.format("RSI: %.1f (14-period index: %.1f)",
+                    rsiScore, rsiResult.value()));
         } else {
-            explanations.add("RSI: Neutral (Awaiting 14-period warm-up)");
+            explanations.add("RSI: 50.0 (Awaiting 14-period warm-up)");
         }
 
         if (rvolResult != null && rvolResult.ready()) {
-            String volLabel = volumeSignal == Signal.POSITIVE ? "Elevated" : (volumeSignal == Signal.NEGATIVE ? "Subdued" : "Typical");
-            explanations.add(String.format("Volume: %s (%.2fx of 20-period baseline)",
-                    volLabel, rvolResult.value()));
+            explanations.add(String.format("Volume: %.1f (%.2fx of 20-period baseline)",
+                    volumeScore, rvolResult.value()));
         } else {
-            explanations.add("Volume: Baseline (Awaiting volume history)");
+            explanations.add("Volume: 50.0 (Awaiting volume history)");
         }
 
         Map<String, Signal> signals = new HashMap<>();
@@ -135,10 +185,14 @@ public class ConvictionScoreEngine {
                 symbol,
                 compositeScore,
                 category,
-                roundOneDecimal(trendScore),
-                roundOneDecimal(momentumScore),
-                roundOneDecimal(rsiScore),
-                roundOneDecimal(volumeScore),
+                trendScore,
+                momentumScore,
+                rsiScore,
+                volumeScore,
+                trendContribution,
+                momentumContribution,
+                rsiContribution,
+                volumeContribution,
                 explanations,
                 signals,
                 true,
@@ -146,13 +200,10 @@ public class ConvictionScoreEngine {
         );
     }
 
-    private double signalToRatio(Signal signal) {
-        if (signal == null) return 0.5;
-        return switch (signal) {
-            case POSITIVE -> 1.0;
-            case NEGATIVE -> 0.0;
-            case NEUTRAL, NOT_READY -> 0.5;
-        };
+    private Signal scoreToSignal(double score) {
+        if (score >= 60.0) return Signal.POSITIVE;
+        if (score <= 40.0) return Signal.NEGATIVE;
+        return Signal.NEUTRAL;
     }
 
     private double clamp(double val, double min, double max) {

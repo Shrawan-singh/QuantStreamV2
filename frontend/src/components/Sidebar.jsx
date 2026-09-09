@@ -94,13 +94,13 @@ export default function Sidebar({
                     color: isConnected ? 'var(--bullish)' : 'var(--bearish)',
                   }}
                 >
-                  {isConnected ? 'LIVE' : 'OFFLINE'}
+                  {isConnected ? 'ONLINE' : 'OFFLINE'}
                 </span>
               </span>
             </div>
 
             <div className="sidebar-status-row">
-              <span className="text-muted">Engine</span>
+              <span className="text-muted">Data Engine</span>
               <span
                 className="mono font-bold"
                 style={{
@@ -108,7 +108,7 @@ export default function Sidebar({
                   color: isLive ? 'var(--bullish)' : 'var(--neutral)',
                 }}
               >
-                {isLive ? 'FINNHUB' : 'SIMULATION'}
+                {isLive ? 'LIVE (US)' : 'SIMULATION (NSE)'}
               </span>
             </div>
 

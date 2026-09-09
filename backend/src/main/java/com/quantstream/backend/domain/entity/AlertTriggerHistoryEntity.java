@@ -11,46 +11,47 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
-@Table(name = "alert_configs")
-public class AlertConfigEntity {
+@Table(name = "alert_trigger_history")
+public class AlertTriggerHistoryEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "alert_id", nullable = false)
+    private Long alertId;
+
     @Column(nullable = false, length = 20)
     private String symbol;
 
     @Column(name = "condition_type", nullable = false, length = 50)
-    private String conditionType; // e.g. PRICE_ABOVE, PRICE_BELOW, SCORE_ABOVE, SCORE_BELOW
+    private String conditionType;
 
     @Column(nullable = false, precision = 12, scale = 4)
     private BigDecimal threshold;
 
-    @Column(nullable = false)
-    private boolean enabled = true;
-
-    @Column(nullable = false)
-    private boolean triggered = false;
-
-    @Column(name = "triggered_at")
-    private Instant triggeredAt;
-
-    @Column(name = "triggered_value", precision = 12, scale = 4)
+    @Column(name = "triggered_value", nullable = false, precision = 12, scale = 4)
     private BigDecimal triggeredValue;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt = Instant.now();
+    @Column(name = "triggered_at", nullable = false)
+    private Instant triggeredAt = Instant.now();
 
-    public AlertConfigEntity() {}
+    public AlertTriggerHistoryEntity() {}
 
-    public AlertConfigEntity(String symbol, String conditionType, BigDecimal threshold, boolean enabled) {
+    public AlertTriggerHistoryEntity(
+            Long alertId,
+            String symbol,
+            String conditionType,
+            BigDecimal threshold,
+            BigDecimal triggeredValue,
+            Instant triggeredAt
+    ) {
+        this.alertId = alertId;
         this.symbol = symbol != null ? symbol.toUpperCase() : null;
         this.conditionType = conditionType;
         this.threshold = threshold;
-        this.enabled = enabled;
-        this.triggered = false;
-        this.createdAt = Instant.now();
+        this.triggeredValue = triggeredValue;
+        this.triggeredAt = triggeredAt != null ? triggeredAt : Instant.now();
     }
 
     public Long getId() {
@@ -59,6 +60,14 @@ public class AlertConfigEntity {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getAlertId() {
+        return alertId;
+    }
+
+    public void setAlertId(Long alertId) {
+        this.alertId = alertId;
     }
 
     public String getSymbol() {
@@ -85,30 +94,6 @@ public class AlertConfigEntity {
         this.threshold = threshold;
     }
 
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public boolean isTriggered() {
-        return triggered;
-    }
-
-    public void setTriggered(boolean triggered) {
-        this.triggered = triggered;
-    }
-
-    public Instant getTriggeredAt() {
-        return triggeredAt;
-    }
-
-    public void setTriggeredAt(Instant triggeredAt) {
-        this.triggeredAt = triggeredAt;
-    }
-
     public BigDecimal getTriggeredValue() {
         return triggeredValue;
     }
@@ -117,18 +102,11 @@ public class AlertConfigEntity {
         this.triggeredValue = triggeredValue;
     }
 
-    public Instant getCreatedAt() {
-        return createdAt;
+    public Instant getTriggeredAt() {
+        return triggeredAt;
     }
 
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public String getState() {
-        if (triggered) {
-            return "TRIGGERED";
-        }
-        return enabled ? "ACTIVE" : "DISABLED";
+    public void setTriggeredAt(Instant triggeredAt) {
+        this.triggeredAt = triggeredAt;
     }
 }

@@ -8,29 +8,57 @@ export default function Header({
   totalTicks,
   marketConfig,
   allInstruments = [],
+  apiBase = '',
   onSelectSymbol,
   onSelectTab,
   onToggleSidebar,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [registry, setRegistry] = useState([]);
   const searchRef = useRef(null);
 
   const isConnected = connectionStatus === 'CONNECTED';
   const isLive = marketConfig?.mode === 'live';
 
-  // Filter instruments by search
+  useEffect(() => {
+    fetch(`${apiBase || 'http://localhost:8080'}/api/instruments`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRegistry(data);
+        }
+      })
+      .catch(() => {});
+  }, [apiBase]);
+
+  // Combine live market data with full instrument registry
+  const searchUniverse = useMemo(() => {
+    const liveMap = new Map(allInstruments.map((s) => [s.symbol, s]));
+    if (!registry || registry.length === 0) return allInstruments;
+    return registry.map((item) => {
+      const live = liveMap.get(item.symbol);
+      return {
+        ...item,
+        price: live?.price ?? null,
+        priceChange: live?.priceChange ?? null,
+        priceChangePercent: live?.priceChangePercent ?? null,
+      };
+    });
+  }, [allInstruments, registry]);
+
+  // Filter instruments by search query
   const filteredInstruments = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.trim().toUpperCase();
-    return allInstruments
+    return searchUniverse
       .filter(
         (s) =>
           s.symbol?.toUpperCase().includes(q) ||
           s.companyName?.toUpperCase().includes(q)
       )
-      .slice(0, 8);
-  }, [searchQuery, allInstruments]);
+      .slice(0, 10);
+  }, [searchQuery, searchUniverse]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -132,7 +160,7 @@ export default function Header({
       </div>
 
       <div className="header-right">
-        {/* Connection Status */}
+        {/* Truthful Connection Status */}
         <div
           className="flex-row items-center gap-xs badge-pill"
           style={{
@@ -149,11 +177,11 @@ export default function Header({
               color: isConnected ? 'var(--bullish)' : 'var(--bearish)',
             }}
           >
-            {isConnected ? 'STREAMING' : 'RECONNECTING'}
+            {isConnected ? '● STREAMING' : '○ RECONNECTING'}
           </span>
         </div>
 
-        {/* Engine mode */}
+        {/* Truthful Data Source Status */}
         <div
           className="flex-row items-center gap-xs badge-pill"
           style={{
@@ -162,12 +190,12 @@ export default function Header({
             padding: '4px 12px',
           }}
         >
-          <span className="mono" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>ENGINE:</span>
+          <span className="mono" style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>DATA SOURCE:</span>
           <span
             className="mono font-bold"
             style={{ fontSize: '0.68rem', color: isLive ? 'var(--bullish)' : 'var(--neutral)' }}
           >
-            {isLive ? 'LIVE' : 'SIM'}
+            {isLive ? 'LIVE MARKET • US EQUITIES' : 'SIMULATION • NSE EQUITIES'}
           </span>
         </div>
 

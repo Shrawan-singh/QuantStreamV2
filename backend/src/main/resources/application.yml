@@ -2,7 +2,7 @@ spring:
   application:
     name: quantstream-backend
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://quantstream-postgres:5432/quantstream}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/quantstream}
     username: ${SPRING_DATASOURCE_USERNAME:quantstream}
     password: ${SPRING_DATASOURCE_PASSWORD:quantstream}
     driver-class-name: org.postgresql.Driver
@@ -11,7 +11,7 @@ spring:
       ddl-auto: none
     open-in-view: false
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:quantstream-kafka:9092}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
       auto-offset-reset: earliest
@@ -42,7 +42,7 @@ quantstream:
     auto-start: ${SIMULATION_AUTO_START:true}
     seed: ${SIMULATION_SEED:20260902}
     interval-ms: ${SIMULATION_INTERVAL_MS:500}
-    symbols: ${SIMULATION_SYMBOLS:RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK}
+    symbols: ${SIMULATION_SYMBOLS:RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK,SBIN,BHARTIARTL,ITC,KOTAKBANK,LT,HINDUNILVR,AXISBANK,MARUTI,SUNPHARMA,TATAMOTORS,BAJFINANCE,ASIANPAINT,TITAN,WIPRO,ULTRACEMCO,NTPC,ONGC,POWERGRID,MM,ADANIENT,ADANIPORTS,COALINDIA,TATASTEEL,JSWSTEEL,HCLTECH,BAJAJFINSV,TECHM,INDUSINDBK,NESTLEIND,GRASIM,CIPLA,DRREDDY,EICHERMOT,APOLLOHOSP,BPCL}
   streaming:
     market-ticks-topic: ${KAFKA_TOPIC_MARKET_TICKS:market-ticks}
     consumer-group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}

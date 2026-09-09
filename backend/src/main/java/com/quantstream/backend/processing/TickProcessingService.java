@@ -12,6 +12,7 @@ import com.quantstream.backend.config.IndicatorProperties;
 import com.quantstream.backend.config.ScoringProperties;
 import com.quantstream.backend.domain.StockTick;
 import com.quantstream.backend.domain.dto.AnalyticsSnapshot;
+import com.quantstream.backend.service.AlertExecutionService;
 import com.quantstream.backend.service.AnalyticsPersistenceService;
 import com.quantstream.backend.websocket.MarketWebSocketService;
 import org.slf4j.Logger;
@@ -26,7 +27,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * High-throughput worker processing service.
  *
  * <p>Validates ticks, updates tracking metrics, orchestrates in-memory quantitative analytics,
- * broadcasts results to WebSocket clients, and enqueues snapshots for asynchronous persistence.</p>
+ * broadcasts results to WebSocket clients, evaluates autonomous alerts, and enqueues snapshots
+ * for asynchronous persistence.</p>
  */
 @Service
 public class TickProcessingService {
@@ -37,6 +39,7 @@ public class TickProcessingService {
     private final AnalyticsEngine analyticsEngine;
     private final MarketWebSocketService webSocketService;
     private final AnalyticsPersistenceService persistenceService;
+    private final AlertExecutionService alertExecutionService;
 
     private final AtomicLong totalProcessed = new AtomicLong(0L);
     private final ConcurrentHashMap<String, AtomicLong> processedBySymbol = new ConcurrentHashMap<>();
@@ -46,12 +49,14 @@ public class TickProcessingService {
             TickValidationService tickValidationService,
             AnalyticsEngine analyticsEngine,
             MarketWebSocketService webSocketService,
-            AnalyticsPersistenceService persistenceService
+            AnalyticsPersistenceService persistenceService,
+            @Autowired(required = false) AlertExecutionService alertExecutionService
     ) {
         this.tickValidationService = tickValidationService;
         this.analyticsEngine = analyticsEngine;
         this.webSocketService = webSocketService;
         this.persistenceService = persistenceService;
+        this.alertExecutionService = alertExecutionService;
     }
 
     /**
@@ -61,6 +66,7 @@ public class TickProcessingService {
         this(
                 tickValidationService,
                 createDefaultAnalyticsEngine(),
+                null,
                 null,
                 null
         );
@@ -96,7 +102,12 @@ public class TickProcessingService {
             webSocketService.broadcast(snapshot);
         }
 
-        // 5. Asynchronous persistence and alert evaluation (off hot path)
+        // 5. Alert Evaluation with one-shot trigger semantics
+        if (alertExecutionService != null) {
+            alertExecutionService.evaluate(snapshot);
+        }
+
+        // 6. Asynchronous persistence (throttled off hot path)
         if (persistenceService != null) {
             persistenceService.enqueue(snapshot);
         }

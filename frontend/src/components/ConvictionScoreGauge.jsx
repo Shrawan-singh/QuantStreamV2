@@ -17,9 +17,9 @@ export default function ConvictionScoreGauge({ snapshot }) {
 
   // Math for SVG radial arc
   const cx = 150;
-  const cy = 150;
-  const radius = 110;
-  const strokeWidth = 16;
+  const cy = 135;
+  const radius = 95;
+  const strokeWidth = 14;
   const startAngle = 140;
   const endAngle = 400;
 
@@ -41,107 +41,118 @@ export default function ConvictionScoreGauge({ snapshot }) {
     ].join(' ');
   };
 
-  // Convert score (0-100) to an angle between startAngle and endAngle
-  const scoreAngle = startAngle + (score / 100) * (endAngle - startAngle);
+  const scoreAngle = startAngle + (Math.min(100, Math.max(0, score)) / 100) * (endAngle - startAngle);
   const trackPath = describeArc(cx, cy, radius, startAngle, endAngle);
   const fillPath = describeArc(cx, cy, radius, startAngle, scoreAngle);
 
-  // Coordinates for the tick marks
-  const ticks = [0, 25, 50, 75, 100];
-  const tickElements = ticks.map(t => {
-    const a = startAngle + (t / 100) * (endAngle - startAngle);
-    const inner = polarToCartesian(cx, cy, radius - strokeWidth/2 - 5, a);
-    const outer = polarToCartesian(cx, cy, radius + strokeWidth/2 + 5, a);
-    return (
-      <line key={`tick-${t}`} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
-    );
-  });
+  // Sub-scores and weighted contributions (0.25 each)
+  const factorScores = snapshot.factorScores || {};
+  const scoreBreakdown = snapshot.scoreBreakdown || {};
+
+  const trendScore = factorScores.trend != null ? Number(factorScores.trend) : (scoreBreakdown.trend != null ? Number(scoreBreakdown.trend) * 4 : 50.0);
+  const momentumScore = factorScores.momentum != null ? Number(factorScores.momentum) : (scoreBreakdown.momentum != null ? Number(scoreBreakdown.momentum) * 4 : 50.0);
+  const rsiScore = factorScores.rsi != null ? Number(factorScores.rsi) : (scoreBreakdown.rsi != null ? Number(scoreBreakdown.rsi) * 4 : 50.0);
+  const volumeScore = factorScores.volume != null ? Number(factorScores.volume) : (scoreBreakdown.volume != null ? Number(scoreBreakdown.volume) * 4 : 50.0);
+
+  const trendContr = scoreBreakdown.trend != null ? Number(scoreBreakdown.trend) : trendScore * 0.25;
+  const momentumContr = scoreBreakdown.momentum != null ? Number(scoreBreakdown.momentum) : momentumScore * 0.25;
+  const rsiContr = scoreBreakdown.rsi != null ? Number(scoreBreakdown.rsi) : rsiScore * 0.25;
+  const volumeContr = scoreBreakdown.volume != null ? Number(scoreBreakdown.volume) : volumeScore * 0.25;
+
+  const factors = [
+    { name: 'Trend', score: trendScore, contr: trendContr, color: 'var(--accent-blue)' },
+    { name: 'Momentum', score: momentumScore, contr: momentumContr, color: 'var(--accent-indigo)' },
+    { name: 'RSI', score: rsiScore, contr: rsiContr, color: 'var(--bullish)' },
+    { name: 'Volume', score: volumeScore, contr: volumeContr, color: 'var(--neutral)' }
+  ];
 
   return (
     <div className="terminal-panel flex-col items-center p-xl relative">
-      <div className="w-full flex-row justify-between items-center mb-md">
+      <div className="w-full flex-row justify-between items-center mb-xs">
         <div className="flex-row items-center gap-xs">
           <span className="material-symbols-outlined text-accent" style={{ fontSize: '18px' }}>psychology</span>
-          <h3 className="section-title">ALGORITHMIC CONVICTION</h3>
+          <h3 className="section-title">CONTINUOUS CONVICTION</h3>
         </div>
+        <span className="badge badge-pill" style={{ fontSize: '0.68rem', background: 'rgba(255,255,255,0.05)' }}>
+          4-FACTOR MODEL
+        </span>
       </div>
 
-      <div className="relative" style={{ width: '300px', height: '240px' }}>
-        {/* Glow effect */}
+      <div className="relative" style={{ width: '280px', height: '190px' }}>
+        {/* Ambient glow */}
         <div style={{
           position: 'absolute',
-          top: '50%',
+          top: '45%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '180px',
-          height: '180px',
+          width: '140px',
+          height: '140px',
           borderRadius: '50%',
           background: scoreColor,
-          filter: 'blur(60px)',
-          opacity: 0.15,
-          zIndex: 0,
+          filter: 'blur(50px)',
+          opacity: 0.18,
           pointerEvents: 'none'
         }} />
 
-        <svg width="300" height="240" viewBox="0 0 300 240" style={{ position: 'relative', zIndex: 1 }}>
+        <svg width="280" height="190" viewBox="0 0 300 210" style={{ position: 'relative', zIndex: 1 }}>
           <defs>
             <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor={scoreColor} stopOpacity="0.6" />
+              <stop offset="0%" stopColor={scoreColor} stopOpacity="0.5" />
               <stop offset="100%" stopColor={scoreColor} stopOpacity="1" />
             </linearGradient>
-            
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
           </defs>
 
           {/* Background Track */}
           <path
             d={trackPath}
             fill="none"
-            stroke="rgba(255, 255, 255, 0.05)"
+            stroke="rgba(255, 255, 255, 0.06)"
             strokeWidth={strokeWidth}
             strokeLinecap="round"
           />
 
-          {/* Ticks */}
-          {tickElements}
-
-          {/* Animated Fill Path */}
+          {/* Animated Fill */}
           <path
             d={fillPath}
             fill="none"
             stroke="url(#scoreGradient)"
             strokeWidth={strokeWidth}
             strokeLinecap="round"
-            filter="url(#glow)"
-            style={{ transition: 'd 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
+            style={{ transition: 'd 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
           />
 
-          {/* Center Text Area */}
-          <text x={cx} y={cy - 10} textAnchor="middle" fill="var(--text-primary)" fontSize="48" fontWeight="800" fontFamily="var(--font-mono)">
-            {score.toFixed(1)}
+          {/* Center Text */}
+          <text x={cx} y={cy - 5} textAnchor="middle" fill="var(--text-primary)" fontSize="44" fontWeight="800" fontFamily="var(--font-mono)">
+            {Number(score).toFixed(1)}
           </text>
-          <text x={cx} y={cy + 25} textAnchor="middle" fill={scoreColor} fontSize="14" fontWeight="700" letterSpacing="0.05em">
+          <text x={cx} y={cy + 24} textAnchor="middle" fill={scoreColor} fontSize="13" fontWeight="700" letterSpacing="0.06em">
             {category.replace('_', ' ')}
           </text>
         </svg>
+      </div>
 
-        {/* Legend */}
-        <div className="absolute bottom-0 left-0 right-0 flex-row justify-center gap-md" style={{ bottom: '-10px' }}>
-          <div className="flex-row items-center gap-xs">
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--score-very-weak)' }} />
-            <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>0</span>
-          </div>
-          <div className="flex-row items-center gap-xs">
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--score-neutral)' }} />
-            <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>50</span>
-          </div>
-          <div className="flex-row items-center gap-xs">
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--score-very-strong)' }} />
-            <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>100</span>
-          </div>
+      {/* Factor Sub-Score & Explainability Table */}
+      <div className="w-full mt-sm pt-sm" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+        <div className="flex-row justify-between items-center mb-xs">
+          <span className="label-caps" style={{ fontSize: '0.68rem' }}>FACTOR EXPLAINABILITY</span>
+          <span className="text-muted mono" style={{ fontSize: '0.65rem' }}>SCORE (WEIGHT: 25%)</span>
+        </div>
+
+        <div className="flex-col gap-xs">
+          {factors.map((f) => (
+            <div key={f.name} className="flex-row justify-between items-center" style={{ fontSize: '0.78rem' }}>
+              <div className="flex-row items-center gap-xs">
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: f.color }} />
+                <span className="text-secondary">{f.name}</span>
+              </div>
+              <div className="flex-row items-center gap-md">
+                <span className="mono font-bold text-primary">{f.score.toFixed(1)}</span>
+                <span className="mono text-muted" style={{ fontSize: '0.7rem', width: '52px', textAlign: 'right' }}>
+                  +{f.contr.toFixed(1)} pts
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

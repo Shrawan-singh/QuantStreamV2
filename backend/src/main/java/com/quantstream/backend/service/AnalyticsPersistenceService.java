@@ -1,18 +1,14 @@
 package com.quantstream.backend.service;
 
 import com.quantstream.backend.domain.dto.AnalyticsSnapshot;
-import com.quantstream.backend.domain.entity.AlertConfigEntity;
 import com.quantstream.backend.domain.entity.AnalyticsSnapshotEntity;
-import com.quantstream.backend.repository.AlertConfigRepository;
 import com.quantstream.backend.repository.AnalyticsSnapshotRepository;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -25,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  * off the high-throughput market data processing hot path.
  *
  * <p>Uses an internal bounded queue and dedicated single-thread worker to throttle
- * and persist snapshot records and evaluate alert conditions without blocking processing workers.</p>
+ * and persist analytical snapshot records without blocking processing workers.</p>
  */
 @Service
 public class AnalyticsPersistenceService {
@@ -35,19 +31,14 @@ public class AnalyticsPersistenceService {
     private static final long PERSIST_THROTTLE_MS = 1500; // At most 1 snapshot per symbol every 1.5s
 
     private final AnalyticsSnapshotRepository snapshotRepository;
-    private final AlertConfigRepository alertConfigRepository;
 
     private final BlockingQueue<AnalyticsSnapshot> persistenceQueue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
     private final ConcurrentHashMap<String, Long> lastPersistedTime = new ConcurrentHashMap<>();
     private final ExecutorService executor;
     private volatile boolean running = true;
 
-    public AnalyticsPersistenceService(
-            AnalyticsSnapshotRepository snapshotRepository,
-            AlertConfigRepository alertConfigRepository
-    ) {
+    public AnalyticsPersistenceService(AnalyticsSnapshotRepository snapshotRepository) {
         this.snapshotRepository = snapshotRepository;
-        this.alertConfigRepository = alertConfigRepository;
 
         this.executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "analytics-persistence-worker");
@@ -59,7 +50,7 @@ public class AnalyticsPersistenceService {
     }
 
     /**
-     * Enqueues a snapshot for asynchronous throttled persistence and alert evaluation.
+     * Enqueues a snapshot for asynchronous throttled persistence.
      * Non-blocking (uses offer; drops if queue is full during extreme bursts).
      */
     public void enqueue(AnalyticsSnapshot snapshot) {
@@ -87,7 +78,6 @@ public class AnalyticsPersistenceService {
                 AnalyticsSnapshot snapshot = persistenceQueue.poll(500, TimeUnit.MILLISECONDS);
                 if (snapshot != null) {
                     persistSnapshot(snapshot);
-                    checkAlerts(snapshot);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -119,53 +109,17 @@ public class AnalyticsPersistenceService {
         }
     }
 
-    private void checkAlerts(AnalyticsSnapshot snapshot) {
-        try {
-            List<AlertConfigEntity> alerts = alertConfigRepository.findBySymbol(snapshot.symbol());
-            for (AlertConfigEntity alert : alerts) {
-                if (!alert.isEnabled()) continue;
-
-                boolean triggered = false;
-                BigDecimal price = snapshot.price();
-                double score = snapshot.convictionScore();
-
-                switch (alert.getConditionType().toUpperCase()) {
-                    case "PRICE_ABOVE" -> {
-                        if (price != null && price.compareTo(alert.getThreshold()) > 0) {
-                            triggered = true;
-                        }
-                    }
-                    case "PRICE_BELOW" -> {
-                        if (price != null && price.compareTo(alert.getThreshold()) < 0) {
-                            triggered = true;
-                        }
-                    }
-                    case "SCORE_ABOVE" -> {
-                        if (score > alert.getThreshold().doubleValue()) {
-                            triggered = true;
-                        }
-                    }
-                    case "SCORE_BELOW" -> {
-                        if (score < alert.getThreshold().doubleValue()) {
-                            triggered = true;
-                        }
-                    }
-                }
-
-                if (triggered) {
-                    logger.info("ALERT TRIGGERED: Symbol={} Condition={} Threshold={} CurrentValue={}",
-                            alert.getSymbol(), alert.getConditionType(), alert.getThreshold(),
-                            alert.getConditionType().startsWith("PRICE") ? price : score);
-                }
-            }
-        } catch (Exception e) {
-            logger.debug("Alert check skipped: {}", e.getMessage());
-        }
-    }
-
     @PreDestroy
     public void shutdown() {
-        this.running = false;
-        this.executor.shutdownNow();
+        running = false;
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }
