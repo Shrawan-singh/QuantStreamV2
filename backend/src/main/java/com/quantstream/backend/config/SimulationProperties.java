@@ -1,0 +1,63 @@
+package com.quantstream.backend.config;
+
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Validated
+@ConfigurationProperties(prefix = "quantstream.simulation")
+public class SimulationProperties {
+
+    private boolean autoStart = true;
+
+    @Min(1)
+    private long seed = 20260902L;
+
+    @Min(100)
+    private long intervalMs = 500L;
+
+    @NotEmpty
+    private List<String> symbols = new ArrayList<>(List.of(
+            "RELIANCE",
+            "TCS",
+            "INFY",
+            "HDFCBANK",
+            "ICICIBANK"
+    ));
+
+    public boolean isAutoStart() {
+        return autoStart;
+    }
+
+    public void setAutoStart(boolean autoStart) {
+        this.autoStart = autoStart;
+    }
+
+    public long getSeed() {
+        return seed;
+    }
+
+    public void setSeed(long seed) {
+        this.seed = seed;
+    }
+
+    public long getIntervalMs() {
+        return intervalMs;
+    }
+
+    public void setIntervalMs(long intervalMs) {
+        this.intervalMs = intervalMs;
+    }
+
+    public List<String> getSymbols() {
+        return symbols;
+    }
+
+    public void setSymbols(List<String> symbols) {
+        this.symbols = symbols;
+    }
+}

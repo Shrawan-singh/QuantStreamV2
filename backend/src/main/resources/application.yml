@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: quantstream-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://quantstream-postgres:5432/quantstream}
+    username: ${SPRING_DATASOURCE_USERNAME:quantstream}
+    password: ${SPRING_DATASOURCE_PASSWORD:quantstream}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:quantstream-kafka:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
+      auto-offset-reset: earliest
+  main:
+    banner-mode: console
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+quantstream:
+  marketdata:
+    mode: ${MARKET_DATA_MODE:simulation}
+    provider: ${MARKET_DATA_PROVIDER:finnhub}
+    api-key: ${FINNHUB_API_KEY:}
+    websocket-url: ${FINNHUB_WEBSOCKET_URL:wss://ws.finnhub.io}
+    symbols: ${LIVE_SYMBOLS:AAPL,MSFT,AMZN,NVDA,GOOGL,META,TSLA}
+  simulation:
+    auto-start: ${SIMULATION_AUTO_START:true}
+    seed: ${SIMULATION_SEED:20260902}
+    interval-ms: ${SIMULATION_INTERVAL_MS:500}
+    symbols: ${SIMULATION_SYMBOLS:RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK}
+  streaming:
+    market-ticks-topic: ${KAFKA_TOPIC_MARKET_TICKS:market-ticks}
+    consumer-group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
+    queue-size: ${QUEUE_SIZE:1000}
+    worker-pool-size: ${WORKER_POOL_SIZE:4}
+    worker-poll-timeout-ms: ${WORKER_POLL_TIMEOUT_MS:500}
+    shutdown-timeout-ms: ${WORKER_SHUTDOWN_TIMEOUT_MS:5000}
+  indicators:
+    sma-period: ${INDICATOR_SMA_PERIOD:20}
+    ema-period: ${INDICATOR_EMA_PERIOD:20}
+    rsi-period: ${INDICATOR_RSI_PERIOD:14}
+    rsi-positive-threshold: ${INDICATOR_RSI_POSITIVE:60.0}
+    rsi-negative-threshold: ${INDICATOR_RSI_NEGATIVE:40.0}
+    momentum-period: ${INDICATOR_MOMENTUM_PERIOD:10}
+    momentum-positive-threshold: ${INDICATOR_MOMENTUM_POSITIVE:0.5}
+    momentum-negative-threshold: ${INDICATOR_MOMENTUM_NEGATIVE:-0.5}
+    volume-lookback: ${INDICATOR_VOLUME_LOOKBACK:20}
+    volume-positive-threshold: ${INDICATOR_VOLUME_POSITIVE:1.5}
+    volume-negative-threshold: ${INDICATOR_VOLUME_NEGATIVE:0.7}
+  scoring:
+    trend-weight: ${SCORING_TREND_WEIGHT:25.0}
+    momentum-weight: ${SCORING_MOMENTUM_WEIGHT:25.0}
+    rsi-weight: ${SCORING_RSI_WEIGHT:25.0}
+    volume-weight: ${SCORING_VOLUME_WEIGHT:25.0}
+
