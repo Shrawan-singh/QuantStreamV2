@@ -1,0 +1,10 @@
+.git
+.github
+.env*
+.m2
+node_modules
+target
+build
+.next
+docs
+*.md

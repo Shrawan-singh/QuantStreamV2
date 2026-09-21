@@ -1,31 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import { currencySymbol, exchangeTag } from '../lib/marketUtils';
 
 export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSymbol, onDrillDown }) {
-  const [flashMap, setFlashMap] = useState({});
-  const prevPrices = useRef({});
-
-  // Track tick flashes
-  useEffect(() => {
-    stocks.forEach((stock) => {
-      const prevPrice = prevPrices.current[stock.symbol];
-      if (prevPrice !== undefined && stock.price !== undefined) {
-        const newPrice = Number(stock.price);
-        if (newPrice > Number(prevPrice)) {
-          setFlashMap((prev) => ({ ...prev, [stock.symbol]: 'flash-up' }));
-          setTimeout(() => setFlashMap((prev) => ({ ...prev, [stock.symbol]: '' })), 700);
-        } else if (newPrice < Number(prevPrice)) {
-          setFlashMap((prev) => ({ ...prev, [stock.symbol]: 'flash-down' }));
-          setTimeout(() => setFlashMap((prev) => ({ ...prev, [stock.symbol]: '' })), 700);
-        }
-      }
-      prevPrices.current[stock.symbol] = stock.price;
-    });
-  }, [stocks]);
-
   if (stocks.length === 0) {
     return (
       <div className="terminal-panel p-xl text-center text-muted">
@@ -45,13 +24,14 @@ export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSym
         const isSelected = selectedSymbol === stock.symbol;
         const isUp = (stock.priceChangePercent ?? 0) >= 0;
         const scoreColor = getScoreColor(stock.scoreCategory);
-        const flashClass = flashMap[stock.symbol] || '';
+        const flashClass = stock.tickDirection === 'up' ? 'flash-up' : stock.tickDirection === 'down' ? 'flash-down' : '';
         const cur = currencySymbol(stock);
         const tag = exchangeTag(stock);
 
         return (
           <div
             key={stock.symbol}
+            data-tick-dir={stock.tickDirection || 'none'}
             className={`instrument-card ${isSelected ? 'selected' : ''} ${flashClass}`}
             onClick={() => onSelectSymbol(stock.symbol)}
             onDoubleClick={() => onDrillDown && onDrillDown(stock.symbol)}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import MarketModeSelector from '../components/MarketModeSelector';
@@ -33,9 +33,13 @@ const PIPELINE_STEPS = [
   { num: '05', name: 'VISUALIZE', desc: 'Real-time terminal output',     icon: 'query_stats' },
 ];
 
-const CURATED_SYMBOLS = new Set([
+const CURATED_NSE_SYMBOLS = new Set([
   'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
   'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'TATAMOTORS',
+]);
+
+const CURATED_US_SYMBOLS = new Set([
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AVGO', 'JPM', 'LLY',
 ]);
 
 export default function Home() {
@@ -52,17 +56,43 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('DASHBOARD');
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [dashboardView, setDashboardView] = useState('CURATED');
+  const [watchlistSymbols, setWatchlistSymbols] = useState([]);
 
   const stocks = useMemo(() => Object.values(marketData || {}), [marketData]);
 
-  const displayedStocks = useMemo(() => {
-    if (dashboardView === 'CURATED') {
-      const curated = stocks.filter((s) => CURATED_SYMBOLS.has(s.symbol));
-      return curated.length > 0 ? curated : stocks.slice(0, 10);
+  // Load user's watchlist to use as personalized curated list
+  useEffect(() => {
+    let mounted = true;
+    async function loadWatchlist() {
+      try {
+        const res = await fetch(`${apiBase || 'http://localhost:8080'}/api/watchlist`);
+        if (res.ok) {
+          const list = await res.json();
+          if (mounted && Array.isArray(list) && list.length > 0) {
+            setWatchlistSymbols(list.map((item) => item.symbol.toUpperCase()));
+          }
+        }
+      } catch (err) {
+        // Fallback silently to default curated symbols
+      }
     }
-    return stocks;
-  }, [stocks, dashboardView]);
+    loadWatchlist();
+    return () => {
+      mounted = false;
+    };
+  }, [apiBase, activeTab]);
+
+  const effectiveCuratedSet = useMemo(() => {
+    if (watchlistSymbols.length > 0) {
+      return new Set(watchlistSymbols);
+    }
+    return marketConfig?.mode === 'live' ? CURATED_US_SYMBOLS : CURATED_NSE_SYMBOLS;
+  }, [watchlistSymbols, marketConfig?.mode]);
+
+  const displayedStocks = useMemo(() => {
+    const curated = stocks.filter((s) => effectiveCuratedSet.has(s.symbol?.toUpperCase()));
+    return curated.length > 0 ? curated : stocks.slice(0, 10);
+  }, [stocks, effectiveCuratedSet]);
 
   const activeStock = useMemo(() => {
     if (selectedSymbol && marketData[selectedSymbol]) return marketData[selectedSymbol];
@@ -186,48 +216,23 @@ export default function Home() {
 
               {/* Market Overview Grid */}
               <div className="flex-row items-center justify-between mb-base flex-wrap gap-sm">
-                <div className="flex-row items-center gap-md">
-                  <h3 className="section-title" style={{ margin: 0 }}>MARKET OVERVIEW</h3>
-                  <div
-                    className="flex-row items-center gap-xs"
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      padding: '2px',
-                      borderRadius: '4px',
-                      border: '1px solid var(--border-color)',
-                    }}
-                  >
-                    <button
-                      className="btn-ghost"
-                      style={{
-                        padding: '3px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        borderRadius: '3px',
-                        background: dashboardView === 'CURATED' ? 'var(--accent-indigo)' : 'transparent',
-                        color: dashboardView === 'CURATED' ? '#ffffff' : 'var(--text-muted)',
-                      }}
-                      onClick={() => setDashboardView('CURATED')}
-                    >
-                      CURATED (10)
-                    </button>
-                    <button
-                      className="btn-ghost"
-                      style={{
-                        padding: '3px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        borderRadius: '3px',
-                        background: dashboardView === 'ALL' ? 'var(--accent-indigo)' : 'transparent',
-                        color: dashboardView === 'ALL' ? '#ffffff' : 'var(--text-muted)',
-                      }}
-                      onClick={() => setDashboardView('ALL')}
-                    >
-                      FULL UNIVERSE ({stocks.length})
-                    </button>
-                  </div>
+                <div className="flex-col">
+                  <h3 className="section-title" style={{ margin: 0 }}>
+                    {watchlistSymbols.length > 0 ? `YOUR WATCHLIST (${displayedStocks.length})` : `CURATED LEADERS (${displayedStocks.length})`}
+                  </h3>
+                  <span className="section-subtitle" style={{ marginTop: '2px' }}>
+                    {watchlistSymbols.length > 0
+                      ? 'Live overview of your tracked watchlist symbols'
+                      : 'Curated high-liquidity market leaders — click any instrument to inspect'}
+                  </span>
                 </div>
-                <span className="section-subtitle">Click any instrument to inspect</span>
+                <button
+                  className="btn-ghost flex-row items-center gap-xs text-accent font-bold"
+                  onClick={() => setActiveTab('SCANNER')}
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  View all {stocks.length} instruments in Scanner <ArrowRight size={13} />
+                </button>
               </div>
 
               <MarketOverviewGrid
@@ -280,6 +285,8 @@ export default function Home() {
                 setActiveTab('STOCK_DETAIL');
               }}
               selectedSymbol={selectedSymbol}
+              marketConfig={marketConfig}
+              apiBase={apiBase}
             />
           )}
 

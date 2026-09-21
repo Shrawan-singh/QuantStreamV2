@@ -16,10 +16,22 @@ Before running the application, ensure you have the following installed:
 
 1.  **Java 17+** (for the Spring Boot backend)
 2.  **Node.js (v18+) & npm** (for the Next.js frontend)
-3.  **Apache Kafka & Zookeeper** (Running on default ports: Zookeeper `2181`, Kafka `9092`)
+3.  **Apache Kafka (KRaft mode)** or Docker (Kafka on port `9092`)
 4.  **PostgreSQL** (Running on `localhost:5432`)
 
-### Database Setup
+### Quick Start with Docker Compose (Recommended)
+
+To spin up the complete stack (PostgreSQL, Kafka KRaft, Spring Boot backend, and Next.js frontend) in one command:
+
+```bash
+docker compose up --build
+```
+
+Access the frontend at `http://localhost:3000` and the backend at `http://localhost:8080`.
+
+---
+
+### Database Setup (For Manual Local Run)
 
 Create a database named `quantstream` in your local PostgreSQL instance:
 
@@ -27,11 +39,13 @@ Create a database named `quantstream` in your local PostgreSQL instance:
 CREATE DATABASE quantstream;
 ```
 
-Update your database credentials in `backend/src/main/resources/application.properties`:
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/quantstream
-spring.datasource.username=your_username
-spring.datasource.password=your_password
+Update your database credentials in `backend/src/main/resources/application.yml` (or set environment variables `SPRING_DATASOURCE_USERNAME` and `SPRING_DATASOURCE_PASSWORD`):
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/quantstream
+    username: your_username
+    password: your_password
 ```
 
 ## How to Run Locally
@@ -44,7 +58,16 @@ Open a terminal in the `backend` directory.
 
 **Option A: Run in Simulation Mode (No API key required)**
 This mode generates synthetic market data.
+
+*macOS / Linux:*
 ```bash
+cd backend
+export MARKET_DATA_MODE="simulation"
+./mvnw spring-boot:run
+```
+
+*Windows (PowerShell):*
+```powershell
 cd backend
 $env:MARKET_DATA_MODE="simulation"
 .\mvnw.cmd spring-boot:run
@@ -52,7 +75,17 @@ $env:MARKET_DATA_MODE="simulation"
 
 **Option B: Run in Live Mode (Finnhub API key required)**
 This mode streams live US equity data.
+
+*macOS / Linux:*
 ```bash
+cd backend
+export MARKET_DATA_MODE="live"
+export FINNHUB_API_KEY="your_actual_api_key_here"
+./mvnw spring-boot:run
+```
+
+*Windows (PowerShell):*
+```powershell
 cd backend
 $env:MARKET_DATA_MODE="live"
 $env:FINNHUB_API_KEY="your_actual_api_key_here"
@@ -134,7 +167,7 @@ All factor scores and contributions are rounded to 1 decimal place:
 
 ## Real-Time Alert Engine & Lifecycle
 
-*   **Supported Alert Types:** `PRICE_ABOVE`, `PRICE_BELOW`, `CONVICTION_ABOVE`, `CONVICTION_BELOW`.
+*   **Supported Alert Types:** `PRICE_ABOVE`, `PRICE_BELOW`, `CONVICTION_ABOVE` (or `SCORE_ABOVE`), `CONVICTION_BELOW` (or `SCORE_BELOW`).
 *   **One-Shot Trigger Semantics:** Alerts transition to `TRIGGERED` exactly once upon crossing the threshold to prevent duplicate event spamming. Users can re-arm triggered alerts via the UI or `PUT /api/alerts/{id}/reset`.
 *   **End-to-End Pipeline:**
     $$\text{Incoming Tick} \longrightarrow \text{Worker Pool} \longrightarrow \text{Alert Evaluator} \longrightarrow \text{PostgreSQL Audit Log} \longrightarrow \text{STOMP /topic/alerts} \longrightarrow \text{Frontend Modal/Toast}$$

@@ -23,7 +23,7 @@ public class MockMarketDataProvider implements MarketDataProvider {
 
     private final SimulationProperties properties;
     private final DeterministicTickGenerator tickGenerator;
-    private final ScheduledExecutorService scheduler;
+    private ScheduledExecutorService scheduler;
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final AtomicInteger cursor = new AtomicInteger(0);
     private final List<String> subscribedSymbols = new ArrayList<>();
@@ -36,14 +36,19 @@ public class MockMarketDataProvider implements MarketDataProvider {
     }
 
     @Override
-    public void connect() {
+    public synchronized void connect() {
         if (!connected.compareAndSet(false, true)) {
             return;
         }
 
+        if (scheduler == null || scheduler.isShutdown()) {
+            scheduler = Executors.newSingleThreadScheduledExecutor(new SimulationThreadFactory());
+        }
+
         synchronized (subscribedSymbols) {
-            subscribedSymbols.clear();
-            subscribedSymbols.addAll(properties.getSymbols());
+            if (subscribedSymbols.isEmpty()) {
+                subscribedSymbols.addAll(properties.getSymbols());
+            }
         }
 
         scheduler.scheduleAtFixedRate(this::emitNextTickSafely, 0L, properties.getIntervalMs(), TimeUnit.MILLISECONDS);
@@ -66,9 +71,11 @@ public class MockMarketDataProvider implements MarketDataProvider {
     }
 
     @Override
-    public void disconnect() {
+    public synchronized void disconnect() {
         if (connected.compareAndSet(true, false)) {
-            scheduler.shutdownNow();
+            if (scheduler != null && !scheduler.isShutdown()) {
+                scheduler.shutdownNow();
+            }
         }
     }
 
@@ -89,15 +96,20 @@ public class MockMarketDataProvider implements MarketDataProvider {
 
     private void emitNextTickSafely() {
         try {
-            String symbol = nextSymbol();
-            if (symbol == null) {
-                return;
+            List<String> symbols;
+            synchronized (subscribedSymbols) {
+                if (subscribedSymbols.isEmpty()) {
+                    return;
+                }
+                symbols = new ArrayList<>(subscribedSymbols);
             }
 
-            StockTick tick = tickGenerator.nextTick(symbol);
-            tickListener.accept(tick);
+            for (String symbol : symbols) {
+                StockTick tick = tickGenerator.nextTick(symbol);
+                tickListener.accept(tick);
+            }
         } catch (Exception ex) {
-            System.err.println("[MockMarketDataProvider] Failed to emit simulated tick: " + ex.getMessage());
+            System.err.println("[MockMarketDataProvider] Failed to emit simulated tick batch: " + ex.getMessage());
         }
     }
 

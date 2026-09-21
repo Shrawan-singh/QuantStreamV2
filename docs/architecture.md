@@ -82,14 +82,21 @@ QuantStream is a high-throughput, low-latency market data streaming and quantita
   5. **Relative Volume (RVOL)**: Ratio of current tick volume to rolling baseline average volume.
 
 ### F. Explainable Conviction Score Engine
-- Evaluates composite score from 0.0 to 100.0 based on weighted indicator signals.
-- Transparent formula with categorical tiers:
+- Evaluates composite conviction score from 0.0 to 100.0 based on continuous, volatility-relative indicators.
+- **Statistical Mechanics**:
+  - Computes rolling sample standard deviation of log returns ($\sigma_{\text{realized}}$) over $N=20$ ticks.
+  - Normalizes price deviation from SMA into a volatility-relative Z-score ($Z_{\text{trend}} = \frac{P - \text{SMA}}{\text{SMA} \times \sigma}$), scaled across $[-3.0, +3.0] \to [0.0, 100.0]$.
+  - Normalizes momentum rate-of-change into a volatility-relative Z-score ($Z_{\text{mom}} = \frac{R}{\sigma}$), ensuring high-volatility and low-volatility assets are evaluated equitably.
+  - Applies an EMA confirmation bonus ($+4.0$ pts for dual bullish agreement, $-4.0$ pts for dual bearish agreement) or penalty ($-3.0$ pts towards neutral for divergence).
+  - Employs exponential moving average score smoothing ($\alpha = 0.20$) to prevent single-tick jitter while remaining responsive.
+  - Enforces category hysteresis deadband ($\pm 1.5$ points) around boundary transitions (40.0 and 60.0).
+- Categorical Tiers:
   - `0 - 20`: Very Weak (Bearish)
   - `21 - 40`: Weak
   - `41 - 60`: Neutral
   - `61 - 80`: Strong
   - `81 - 100`: Very Strong (Bullish)
-- Transparent breakdown: Trend (+25), Momentum (+25), RSI (+25), Volume (+25) with detailed natural language rationale.
+- Transparent audit trails with human-readable natural language bullets detailing exact volatility, factor Z-scores, adjustments, smoothing, and state hysteresis.
 
 ### G. Real-Time WebSocket & REST Delivery
 - **Spring WebSocket**: STOMP over SockJS endpoint `/ws` broadcasting snapshots to `/topic/market/all` and `/topic/market/{symbol}`.

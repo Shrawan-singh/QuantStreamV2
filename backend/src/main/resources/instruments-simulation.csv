@@ -1,0 +1,236 @@
+# QuantStream NSE Simulation Universe
+# NOTE: base_price is ONLY a deterministic simulation initialization seed and must NEVER be presented as a current or live market price.
+symbol,company_name,exchange,currency,sector,base_price
+RELIANCE,Reliance Industries Ltd,NSE,INR,Energy,2950.00
+TCS,Tata Consultancy Services Ltd,NSE,INR,Technology,4200.00
+INFY,Infosys Ltd,NSE,INR,Technology,1580.00
+HDFCBANK,HDFC Bank Ltd,NSE,INR,Financials,1720.00
+ICICIBANK,ICICI Bank Ltd,NSE,INR,Financials,1280.00
+SBIN,State Bank of India,NSE,INR,Financials,830.00
+BHARTIARTL,Bharti Airtel Ltd,NSE,INR,Telecom,1620.00
+ITC,ITC Ltd,NSE,INR,FMCG,495.00
+KOTAKBANK,Kotak Mahindra Bank Ltd,NSE,INR,Financials,1780.00
+LT,Larsen & Toubro Ltd,NSE,INR,Construction,3620.00
+HINDUNILVR,Hindustan Unilever Ltd,NSE,INR,FMCG,2750.00
+AXISBANK,Axis Bank Ltd,NSE,INR,Financials,1190.00
+MARUTI,Maruti Suzuki India Ltd,NSE,INR,Automobile,12450.00
+SUNPHARMA,Sun Pharmaceutical Industries Ltd,NSE,INR,Healthcare,1820.00
+TATAMOTORS,Tata Motors Ltd,NSE,INR,Automobile,980.00
+BAJFINANCE,Bajaj Finance Ltd,NSE,INR,Financials,7200.00
+ASIANPAINT,Asian Paints Ltd,NSE,INR,Consumer,2950.00
+TITAN,Titan Company Ltd,NSE,INR,Consumer,3550.00
+WIPRO,Wipro Ltd,NSE,INR,Technology,530.00
+ULTRACEMCO,UltraTech Cement Ltd,NSE,INR,Materials,11200.00
+NTPC,NTPC Ltd,NSE,INR,Utilities,410.00
+ONGC,Oil & Natural Gas Corporation Ltd,NSE,INR,Energy,320.00
+POWERGRID,Power Grid Corporation of India Ltd,NSE,INR,Utilities,340.00
+MM,Mahindra & Mahindra Ltd,NSE,INR,Automobile,2780.00
+ADANIENT,Adani Enterprises Ltd,NSE,INR,Diversified,3050.00
+ADANIPORTS,Adani Ports and Special Economic Zone Ltd,NSE,INR,Infrastructure,1450.00
+COALINDIA,Coal India Ltd,NSE,INR,Mining,510.00
+TATASTEEL,Tata Steel Ltd,NSE,INR,Metals,155.00
+JSWSTEEL,JSW Steel Ltd,NSE,INR,Metals,940.00
+HCLTECH,HCL Technologies Ltd,NSE,INR,Technology,1780.00
+BAJAJFINSV,Bajaj Finserv Ltd,NSE,INR,Financials,1820.00
+TECHM,Tech Mahindra Ltd,NSE,INR,Technology,1610.00
+INDUSINDBK,IndusInd Bank Ltd,NSE,INR,Financials,1460.00
+NESTLEIND,Nestle India Ltd,NSE,INR,FMCG,2520.00
+GRASIM,Grasim Industries Ltd,NSE,INR,Materials,2650.00
+CIPLA,Cipla Ltd,NSE,INR,Healthcare,1640.00
+DRREDDY,Dr. Reddy's Laboratories Ltd,NSE,INR,Healthcare,6600.00
+EICHERMOT,Eicher Motors Ltd,NSE,INR,Automobile,4900.00
+APOLLOHOSP,Apollo Hospitals Enterprise Ltd,NSE,INR,Healthcare,6850.00
+BPCL,Bharat Petroleum Corporation Ltd,NSE,INR,Energy,360.00
+AUBANK,AU Small Finance Bank Limited,NSE,INR,Financial Services,720
+BANDHANBNK,Bandhan Bank Limited,NSE,INR,Financial Services,155
+BANKBARODA,Bank of Baroda,NSE,INR,Financial Services,250
+BANKINDIA,Bank of India,NSE,INR,Financial Services,125
+CANBK,Canara Bank,NSE,INR,Financial Services,105
+CHOLAFIN,Cholamandalam Investment and Finance Company Limited,NSE,INR,Financial Services,1500
+FEDERALBNK,The Federal Bank Limited,NSE,INR,Financial Services,190
+IDFCFIRSTB,IDFC First Bank Limited,NSE,INR,Financial Services,80
+INDIANB,Indian Bank,NSE,INR,Financial Services,700
+LICHSGFIN,LIC Housing Finance Limited,NSE,INR,Financial Services,650
+MANAPPURAM,Manappuram Finance Limited,NSE,INR,Financial Services,220
+MUTHOOTFIN,Muthoot Finance Limited,NSE,INR,Financial Services,2200
+PNB,Punjab National Bank,NSE,INR,Financial Services,110
+RBLBANK,RBL Bank Limited,NSE,INR,Financial Services,180
+SBICARD,SBI Cards and Payment Services Limited,NSE,INR,Financial Services,850
+SHRIRAMFIN,Shriram Finance Limited,NSE,INR,Financial Services,700
+UNIONBANK,Union Bank of India,NSE,INR,Financial Services,145
+YESBANK,Yes Bank Limited,NSE,INR,Financial Services,20
+ABCAPITAL,Aditya Birla Capital Limited,NSE,INR,Financial Services,260
+AUROPHARMA,Aurobindo Pharma Limited,NSE,INR,Healthcare,1250
+BIOCON,Biocon Limited,NSE,INR,Healthcare,350
+LUPIN,Lupin Limited,NSE,INR,Healthcare,2200
+MAXHEALTH,Max Healthcare Institute Limited,NSE,INR,Healthcare,1100
+TORNTPHARM,Torrent Pharmaceuticals Limited,NSE,INR,Healthcare,3500
+ZYDUSLIFE,Zydus Lifesciences Limited,NSE,INR,Healthcare,1100
+ALKEM,Alkem Laboratories Limited,NSE,INR,Healthcare,5000
+GLENMARK,Glenmark Pharmaceuticals Limited,NSE,INR,Healthcare,1800
+LAURUSLABS,Laurus Labs Limited,NSE,INR,Healthcare,700
+MANKIND,Mankind Pharma Limited,NSE,INR,Healthcare,2500
+PERSISTENT,Persistent Systems Limited,NSE,INR,Information Technology,5200
+COFORGE,Coforge Limited,NSE,INR,Information Technology,1500
+MPHASIS,Mphasis Limited,NSE,INR,Information Technology,3000
+OFSS,Oracle Financial Services Software Limited,NSE,INR,Information Technology,10000
+KPITTECH,KPIT Technologies Limited,NSE,INR,Information Technology,1300
+TATAELXSI,Tata Elxsi Limited,NSE,INR,Information Technology,6500
+TATACONSUM,Tata Consumer Products Limited,NSE,INR,Consumer Staples,1100
+VBL,Varun Beverages Limited,NSE,INR,Consumer Staples,500
+DABUR,Dabur India Limited,NSE,INR,Consumer Staples,550
+MARICO,Marico Limited,NSE,INR,Consumer Staples,700
+COLPAL,Colgate-Palmolive (India) Limited,NSE,INR,Consumer Staples,2500
+GODREJCP,Godrej Consumer Products Limited,NSE,INR,Consumer Staples,1100
+JUBLFOOD,Jubilant FoodWorks Limited,NSE,INR,Consumer Discretionary,700
+TRENT,Trent Limited,NSE,INR,Consumer Discretionary,5500
+DMART,Avenue Supermarts Limited,NSE,INR,Consumer Discretionary,4000
+NYKAA,FSN E-Commerce Ventures Limited,NSE,INR,Consumer Discretionary,200
+PAYTM,One 97 Communications Limited,NSE,INR,Financial Services,1000
+INDHOTEL,The Indian Hotels Company Limited,NSE,INR,Consumer Discretionary,800
+BHARTIHEXA,Bharti Hexacom Limited,NSE,INR,Communication Services,1200
+IDEA,Vodafone Idea Limited,NSE,INR,Communication Services,10
+INDUSTOWER,Indus Towers Limited,NSE,INR,Communication Services,450
+TATACOMM,Tata Communications Limited,NSE,INR,Communication Services,1900
+HINDPETRO,Hindustan Petroleum Corporation Limited,NSE,INR,Energy,400
+IOC,Indian Oil Corporation Limited,NSE,INR,Energy,150
+GAIL,GAIL (India) Limited,NSE,INR,Energy,190
+RECLTD,REC Limited,NSE,INR,Financial Services,500
+PFC,Power Finance Corporation Limited,NSE,INR,Financial Services,450
+IRFC,Indian Railway Finance Corporation Limited,NSE,INR,Financial Services,150
+IREDA,Indian Renewable Energy Development Agency Limited,NSE,INR,Financial Services,180
+NHPC,NHPC Limited,NSE,INR,Utilities,100
+SJVN,SJVN Limited,NSE,INR,Utilities,100
+TORNTPOWER,Torrent Power Limited,NSE,INR,Utilities,1500
+TATAPOWER,Tata Power Company Limited,NSE,INR,Utilities,400
+JSWENERGY,JSW Energy Limited,NSE,INR,Utilities,600
+CGPOWER,CG Power and Industrial Solutions Limited,NSE,INR,Industrials,700
+BEL,Bharat Electronics Limited,NSE,INR,Industrials,400
+BHEL,Bharat Heavy Electricals Limited,NSE,INR,Industrials,250
+HAL,Hindustan Aeronautics Limited,NSE,INR,Industrials,4500
+RVNL,Rail Vikas Nigam Limited,NSE,INR,Industrials,400
+IRCON,Ircon International Limited,NSE,INR,Industrials,180
+NBCC,NBCC (India) Limited,NSE,INR,Industrials,150
+NCC,NCC Limited,NSE,INR,Industrials,250
+ENGINERSIN,Engineers India Limited,NSE,INR,Industrials,250
+CONCOR,Container Corporation of India Limited,NSE,INR,Industrials,800
+CUMMINSIND,Cummins India Limited,NSE,INR,Industrials,3500
+ABB,ABB India Limited,NSE,INR,Industrials,7000
+SIEMENS,Siemens Limited,NSE,INR,Industrials,7500
+THERMAX,Thermax Limited,NSE,INR,Industrials,4500
+POLYCAB,Polycab India Limited,NSE,INR,Industrials,6500
+KEI,KEI Industries Limited,NSE,INR,Industrials,4000
+DIXON,Dixon Technologies (India) Limited,NSE,INR,Information Technology,12000
+BOSCHLTD,Bosch Limited,NSE,INR,Consumer Discretionary,35000
+MOTHERSON,Samvardhana Motherson International Limited,NSE,INR,Consumer Discretionary,180
+ASHOKLEY,Ashok Leyland Limited,NSE,INR,Consumer Discretionary,250
+TVSMOTOR,TVS Motor Company Limited,NSE,INR,Consumer Discretionary,3200
+HEROMOTOCO,Hero MotoCorp Limited,NSE,INR,Consumer Discretionary,5000
+BHARATFORG,Bharat Forge Limited,NSE,INR,Industrials,1200
+EXIDEIND,Exide Industries Limited,NSE,INR,Consumer Discretionary,400
+APOLLOTYRE,Apollo Tyres Limited,NSE,INR,Consumer Discretionary,450
+MRF,MRF Limited,NSE,INR,Consumer Discretionary,140000
+BALKRISIND,Balkrishna Industries Limited,NSE,INR,Consumer Discretionary,2500
+DEEPAKNTR,Deepak Nitrite Limited,NSE,INR,Materials,2200
+SRF,SRF Limited,NSE,INR,Materials,2500
+PIDILITIND,Pidilite Industries Limited,NSE,INR,Materials,3000
+BERGEPAINT,Berger Paints India Limited,NSE,INR,Materials,600
+KANSAINER,Kansai Nerolac Paints Limited,NSE,INR,Materials,250
+ATUL,Atul Limited,NSE,INR,Materials,6000
+AARTIIND,Aarti Industries Limited,NSE,INR,Materials,450
+TATACHEM,Tata Chemicals Limited,NSE,INR,Materials,1100
+UPL,UPL Limited,NSE,INR,Materials,600
+COROMANDEL,Coromandel International Limited,NSE,INR,Materials,1800
+PIIND,PI Industries Limited,NSE,INR,Materials,4000
+ESCORTS,Escorts Kubota Limited,NSE,INR,Industrials,3500
+JINDALSTEL,Jindal Steel Limited,NSE,INR,Materials,1100
+SAIL,Steel Authority of India Limited,NSE,INR,Materials,140
+NMDC,NMDC Limited,NSE,INR,Materials,250
+VEDL,Vedanta Limited,NSE,INR,Materials,500
+HINDZINC,Hindustan Zinc Limited,NSE,INR,Materials,600
+NATIONALUM,National Aluminium Company Limited,NSE,INR,Materials,250
+APLAPOLLO,APL Apollo Tubes Limited,NSE,INR,Materials,1800
+RAMCOCEM,The Ramco Cements Limited,NSE,INR,Materials,1000
+AMBUJACEM,Ambuja Cements Limited,NSE,INR,Materials,600
+SHREECEM,Shree Cement Limited,NSE,INR,Materials,30000
+ACC,ACC Limited,NSE,INR,Materials,2500
+DALBHARAT,Dalmia Bharat Limited,NSE,INR,Materials,2000
+JKCEMENT,JK Cement Limited,NSE,INR,Materials,4000
+OBEROIRLTY,Oberoi Realty Limited,NSE,INR,Real Estate,2200
+DLF,DLF Limited,NSE,INR,Real Estate,800
+GODREJPROP,Godrej Properties Limited,NSE,INR,Real Estate,2500
+PRESTIGE,Prestige Estates Projects Limited,NSE,INR,Real Estate,1800
+PHOENIXLTD,The Phoenix Mills Limited,NSE,INR,Real Estate,3500
+LODHA,Macrotech Developers Limited,NSE,INR,Real Estate,1400
+LTFOODS,LT Foods Limited,NSE,INR,Consumer Staples,400
+BATAINDIA,Bata India Limited,NSE,INR,Consumer Discretionary,1200
+RELAXO,Relaxo Footwears Limited,NSE,INR,Consumer Discretionary,500
+VOLTAS,Voltas Limited,NSE,INR,Consumer Discretionary,1300
+WHIRLPOOL,Whirlpool of India Limited,NSE,INR,Consumer Discretionary,1400
+BLUESTARCO,Blue Star Limited,NSE,INR,Consumer Discretionary,1800
+CROMPTON,Crompton Greaves Consumer Electricals Limited,NSE,INR,Consumer Discretionary,450
+HAVELLS,Havells India Limited,NSE,INR,Consumer Discretionary,1700
+VGUARD,V-Guard Industries Limited,NSE,INR,Consumer Discretionary,450
+EMAMILTD,Emami Limited,NSE,INR,Consumer Staples,700
+GODREJIND,Godrej Industries Limited,NSE,INR,Industrials,1300
+UBL,United Breweries Limited,NSE,INR,Consumer Staples,2000
+RADICO,Radico Khaitan Limited,NSE,INR,Consumer Staples,2200
+UNITDSPR,United Spirits Limited,NSE,INR,Consumer Staples,1600
+PAGEIND,Page Industries Limited,NSE,INR,Consumer Discretionary,40000
+ZEEL,Zee Entertainment Enterprises Limited,NSE,INR,Communication Services,150
+PVRINOX,PVR INOX Limited,NSE,INR,Communication Services,1200
+SUNTV,Sun TV Network Limited,NSE,INR,Communication Services,700
+MGL,Mahanagar Gas Limited,NSE,INR,Utilities,1400
+IGL,Indraprastha Gas Limited,NSE,INR,Utilities,400
+PETRONET,Petronet LNG Limited,NSE,INR,Energy,350
+ATGL,Adani Total Gas Limited,NSE,INR,Utilities,650
+OIL,Oil India Limited,NSE,INR,Energy,500
+MRPL,Mangalore Refinery and Petrochemicals Limited,NSE,INR,Energy,180
+CASTROLIND,Castrol India Limited,NSE,INR,Energy,220
+CHENNPETRO,Chennai Petroleum Corporation Limited,NSE,INR,Energy,700
+MAZDOCK,Mazagon Dock Shipbuilders Limited,NSE,INR,Industrials,3000
+COCHINSHIP,Cochin Shipyard Limited,NSE,INR,Industrials,1700
+GRSE,Garden Reach Shipbuilders & Engineers Limited,NSE,INR,Industrials,2200
+BEML,BEML Limited,NSE,INR,Industrials,3500
+BDL,Bharat Dynamics Limited,NSE,INR,Industrials,1500
+MIDHANI,Mishra Dhatu Nigam Limited,NSE,INR,Industrials,450
+ASTRAL,Astral Limited,NSE,INR,Industrials,1800
+SUPREMEIND,The Supreme Industries Limited,NSE,INR,Materials,4500
+FINCABLES,Finolex Cables Limited,NSE,INR,Industrials,1300
+KAYNES,Kaynes Technology India Limited,NSE,INR,Information Technology,5000
+MASTEK,Mastek Limited,NSE,INR,Information Technology,3200
+SONATSOFTW,Sonata Software Limited,NSE,INR,Information Technology,450
+CYIENT,Cyient Limited,NSE,INR,Information Technology,1500
+ZENSARTECH,Zensar Technologies Limited,NSE,INR,Information Technology,900
+INTELLECT,Intellect Design Arena Limited,NSE,INR,Information Technology,1200
+ECLERX,eClerx Services Limited,NSE,INR,Information Technology,3000
+HAPPSTMNDS,Happiest Minds Technologies Limited,NSE,INR,Information Technology,800
+TITAGARH,Titagarh Rail Systems Limited,NSE,INR,Industrials,1000
+JAMNAAUTO,Jamna Auto Industries Limited,NSE,INR,Industrials,130
+BASF,BASF India Limited,NSE,INR,Materials,5000
+FLUOROCHEM,Gujarat Fluorochemicals Limited,NSE,INR,Materials,3500
+CLEAN,Clean Science and Technology Limited,NSE,INR,Materials,1200
+NAVINFLUOR,Navin Fluorine International Limited,NSE,INR,Materials,5000
+SOLARINDS,Solar Industries India Limited,NSE,INR,Materials,13000
+WAAREEENER,Waaree Energies Limited,NSE,INR,Industrials,3000
+SUZLON,Suzlon Energy Limited,NSE,INR,Industrials,70
+JSL,Jindal Stainless Limited,NSE,INR,Materials,800
+SAFARI,Safari Industries (India) Limited,NSE,INR,Consumer Discretionary,2200
+CAMPUS,Campus Activewear Limited,NSE,INR,Consumer Discretionary,250
+MEDANTA,Global Health Limited,NSE,INR,Healthcare,1400
+FORTIS,Fortis Healthcare Limited,NSE,INR,Healthcare,700
+ASTERDM,Aster DM Healthcare Limited,NSE,INR,Healthcare,600
+KIMS,Krishna Institute of Medical Sciences Limited,NSE,INR,Healthcare,1200
+GLAND,Gland Pharma Limited,NSE,INR,Healthcare,1800
+ERIS,Eris Lifesciences Limited,NSE,INR,Healthcare,1200
+PPLPHARMA,Piramal Pharma Limited,NSE,INR,Healthcare,250
+NATCOPHARM,Natco Pharma Limited,NSE,INR,Healthcare,900
+GRANULES,Granules India Limited,NSE,INR,Healthcare,650
+JUBLPHARMA,Jubilant Pharmova Limited,NSE,INR,Healthcare,1100
+CRISIL,CRISIL Limited,NSE,INR,Financial Services,5500
+ICRA,ICRA Limited,NSE,INR,Financial Services,6500
+BSE,BSE Limited,NSE,INR,Financial Services,3000
+MCX,Multi Commodity Exchange of India Limited,NSE,INR,Financial Services,7000
+CDSL,Central Depository Services (India) Limited,NSE,INR,Financial Services,1800
+CAMS,Computer Age Management Services Limited,NSE,INR,Financial Services,4000
+KFINTECH,KFin Technologies Limited,NSE,INR,Financial Services,1300

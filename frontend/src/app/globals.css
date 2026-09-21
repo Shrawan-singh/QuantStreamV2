@@ -751,6 +751,46 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-muted);
 }
 
+.virtual-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  user-select: none;
+}
+
+.virtual-header .sortable {
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.virtual-header .sortable:hover {
+  color: var(--text-primary);
+}
+
+.virtual-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.virtual-row:hover {
+  background-color: var(--bg-card-hover);
+}
+
+.virtual-row.selected {
+  background-color: rgba(56, 189, 248, 0.08);
+}
+
 
 /* ═══════════════════════════════════════════════════════
    PROGRESS BARS
@@ -967,8 +1007,8 @@ input, select, textarea { font-family: inherit; }
   100% { background-color: transparent; border-color: var(--border-color); }
 }
 
-.flash-up   { animation: flashGreen 0.7s cubic-bezier(0.1, 0.9, 0.2, 1); }
-.flash-down { animation: flashRed   0.7s cubic-bezier(0.1, 0.9, 0.2, 1); }
+.flash-up, [data-tick-dir="up"]     { animation: flashGreen 0.7s cubic-bezier(0.1, 0.9, 0.2, 1); }
+.flash-down, [data-tick-dir="down"] { animation: flashRed   0.7s cubic-bezier(0.1, 0.9, 0.2, 1); }
 
 
 /* ═══════════════════════════════════════════════════════

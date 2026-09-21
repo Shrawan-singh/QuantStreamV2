@@ -56,48 +56,80 @@ QuantStream computes five primary quantitative indicators from in-memory market 
 
 ---
 
-## 2. Conviction Score Synthesis (0–100 Scale)
+## 2. Volatility-Relative Conviction Score Synthesis (0–100 Scale)
 
-The Conviction Score combines individual quantitative signals into an aggregated, transparent metric.
+The Conviction Score synthesizes quantitative indicators into a statistically standardized, volatility-relative conviction metric with EMA confirmation, exponential smoothing, and category hysteresis.
 
-### Weighting Scheme
-- **Trend Weight ($W_{\text{trend}}$)**: 25.0
-- **Momentum Weight ($W_{\text{mom}}$)**: 25.0
-- **RSI Weight ($W_{\text{rsi}}$)**: 25.0
-- **Volume Weight ($W_{\text{vol}}$)**: 25.0
-- **Total Weight ($W_{\text{total}}$)**: $25 + 25 + 25 + 25 = 100.0$
+### A. Realized Volatility Calculation
+Realized volatility is computed over a rolling window ($N = 20$ ticks, minimum required $k = 5$ ticks) using the sample standard deviation of log returns:
+$$r_t = \ln\left(\frac{P_t}{P_{t-1}}\right)$$
+$$\bar{r} = \frac{1}{k} \sum_{i=1}^{k} r_{t-i+1}$$
+$$\sigma_{\text{realized}} = \sqrt{\frac{1}{k-1} \sum_{i=1}^{k} (r_{t-i+1} - \bar{r})^2}$$
 
-### Signal Ratio Mapping
-Each indicator signal direction maps deterministically to a numerical multiplier ratio:
-- `POSITIVE`: $1.0$ (Full bullish contribution, e.g. $+25$ pts)
-- `NEUTRAL`: $0.5$ (Baseline neutral contribution, e.g. $+12.5$ pts)
-- `NEGATIVE`: $0.0$ (Bearish / zero contribution, e.g. $+0.0$ pts)
-- `NOT_READY`: $0.5$ (Neutral anchor during warm-up phase)
+If fewer than $k$ return samples are available, realized volatility is flagged as insufficient ($-1.0$), and trend/momentum anchor safely at a neutral $50.0$.
+If all prices in the window are identical ($\sigma_{\text{realized}} = 0.0$), the score engine uses an exact zero or applies a minimal floor ($\sigma_{\text{floor}} = 0.005$) if a small price divergence occurs.
 
-### Component Formula
-$$\text{Score}_{\text{component}} = \left(\frac{W_{\text{component}}}{W_{\text{total}}}\right) \times 100 \times \text{Ratio}_{\text{signal}}$$
+---
 
-$$\text{ConvictionScore} = \text{clamp}\left(\sum \text{Score}_{\text{component}}, 0.0, 100.0\right)$$
+### B. Volatility-Relative Trend Factor
+Rather than comparing price to moving averages against arbitrary fixed percentage thresholds, the trend is measured as a Z-score relative to the stock's own realized return volatility:
+$$\Delta_{\text{SMA}} = \frac{P_t - \text{SMA}_t}{\text{SMA}_t}$$
+$$Z_{\text{trend}} = \frac{\Delta_{\text{SMA}}}{\sigma_{\text{realized}}}$$
 
-### Qualitative Categorization
+With a default cap $Z_{\max} = 3.0$:
+$$\text{BaseTrendScore} = \text{clamp}\left(50.0 + \frac{Z_{\text{trend}}}{Z_{\max}} \times 50.0, \; 0.0, \; 100.0\right)$$
 
-| Score Range | Category | Market Interpretation |
+#### EMA Dual-Confirmation Adjustment
+- **Dual Bullish Agreement** ($P_t > \text{SMA}$ and $P_t > \text{EMA}$): $+4.0$ bonus
+- **Dual Bearish Agreement** ($P_t < \text{SMA}$ and $P_t < \text{EMA}$): $-4.0$ deduction
+- **Divergence / Mixed Signal** (e.g. $P_t > \text{SMA}$ but $P_t < \text{EMA}$): $-3.0$ penalty pulling toward $50.0$ neutral.
+
+$$\text{TrendScore} = \text{clamp}\left(\text{BaseTrendScore} + \text{Adjustment}, \; 0.0, \; 100.0\right)$$
+
+---
+
+### C. Volatility-Relative Momentum Factor
+Momentum rate-of-change ($R_{\text{lookback}} = \frac{P_t - P_{t-N}}{P_{t-N}}$) is evaluated as a Z-score normalized by realized volatility:
+$$Z_{\text{mom}} = \frac{R_{\text{lookback}}}{\sigma_{\text{realized}}}$$
+$$\text{MomentumScore} = \text{clamp}\left(50.0 + \frac{Z_{\text{mom}}}{Z_{\max}} \times 50.0, \; 0.0, \; 100.0\right)$$
+
+Equivalence Guarantee: A low-volatility utility stock moving $+1.5\%$ ($\sigma = 0.5\%$) yields $Z = +3.0$ and achieves a maximum MomentumScore of $100.0$. A high-volatility tech stock moving $+15.0\%$ ($\sigma = 5.0\%$) similarly yields $Z = +3.0$ and achieves $100.0$.
+
+---
+
+### D. RSI and Relative Volume Factors
+- **RSI Factor**: Mapped directly from Wilder's RSI:
+  $$\text{RsiScore} = \text{clamp}(\text{RSI}, \; 0.0, \; 100.0)$$
+- **Volume Factor**: Mapped continuously around baseline RVOL $= 1.0$:
+  - $\text{RVOL} \ge 2.0 \implies 100.0$
+  - $\text{RVOL} \le 0.5 \implies 0.0$
+  - $0.5 < \text{RVOL} < 2.0 \implies$ Linear interpolation from $0.0$ to $100.0$.
+
+---
+
+### E. Weighted Raw Score & Exponential Smoothing
+The raw composite score is computed across the four weighted components ($W_i = 25.0$ each, total $100.0$):
+$$\text{RawScore}_t = \sum_{i=1}^{4} \left(\frac{W_i}{W_{\text{total}}}\right) \times \text{FactorScore}_i$$
+
+To eliminate tick-to-tick noise while preserving real responsiveness, the score is smoothed via an exponential moving average ($\alpha = 0.20$):
+$$S_t = \alpha \times \text{RawScore}_t + (1 - \alpha) \times S_{t-1}$$
+For the initial tick or when warming up, $S_0 = \text{RawScore}_0$.
+
+---
+
+### F. Category Hysteresis
+To prevent rapid visual flip-flopping across qualitative categories, a hysteresis buffer ($\pm 1.5$ points) is maintained around the 40.0 and 60.0 boundary thresholds:
+
+| Current Category | Upgrade Condition | Downgrade Condition |
 |---|---|---|
-| **0 – 20** | `VERY_WEAK` | Bearish alignment across trend, momentum, and volume |
-| **21 – 40** | `WEAK` | Unfavorable bias, multiple negative indicators |
-| **41 – 60** | `NEUTRAL` | Mixed signals, consolidation, or initial warm-up |
-| **61 – 80** | `STRONG` | Favorable momentum and trend confirmation |
-| **81 – 100** | `VERY_STRONG` | Strong bullish confluence across all metrics |
+| `NEUTRAL` | $S_t > 60.0 + 1.5 = 61.5 \implies \text{STRONG}$ | $S_t < 40.0 - 1.5 = 38.5 \implies \text{WEAK}$ |
+| `STRONG` | $S_t > 80.0 \implies \text{VERY\_STRONG}$ | $S_t < 60.0 - 1.5 = 58.5 \implies \text{NEUTRAL}$ |
+| `WEAK` | $S_t > 40.0 + 1.5 = 41.5 \implies \text{NEUTRAL}$ | $S_t \le 20.0 \implies \text{VERY\_WEAK}$ |
 
-### Edge-Case Mathematical Guarantees
-1. **Flat Prices ($P_t = P_{t-1} = \dots = P_{t-N}$)**:
-   - When prices remain completely flat across the lookback window, average gain $= 0.0$ and average loss $= 0.0$. Standard formulas divide by zero; QuantStream's implementation explicitly handles this by evaluating $\text{RSI} = 50.0$ with a `NEUTRAL` signal.
-2. **Zero Price Movement in Momentum**:
-   - If price change is exactly $0.0$, momentum evaluates to $0.0\%$ with a `NEUTRAL` signal.
-3. **Zero Volume Baseline in RVOL**:
-   - If historical average volume is $0$, relative volume evaluates as `NOT_READY` with fallback ratio $0.5$ (neutral), avoiding arithmetic `NaN` / divide-by-zero errors.
-4. **Band-Based Trend Signal Suppression**:
-   - Rather than flipping between Bullish and Bearish on microscopic fraction-of-a-cent noise, SMA and EMA enforce a $\pm 0.2\%$ neutral hysteresis band ($1.002$ / $0.998$).
+---
+
+### G. Natural Language Explainability
+Each score evaluation generates human-readable audit bullets for each contributing factor, explicit mention of realized return volatility, Z-scores, EMA confirmation bonuses/penalties, smoothing weights, and current hysteresis state.
 
 ---
 

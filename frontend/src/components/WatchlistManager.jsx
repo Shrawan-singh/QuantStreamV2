@@ -36,7 +36,7 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
   useEffect(() => {
     async function loadInstruments() {
       try {
-        const res = await fetch(`${endpoint}/api/instruments`);
+        const res = await fetch(`${endpoint}/api/instruments/active`);
         if (res.ok) {
           const list = await res.json();
           setSupportedInstruments(list || []);
@@ -294,13 +294,17 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
                 const liveData = (currentMarketData && currentMarketData[sym]) || item.analytics;
                 const cur = currencySymbol(liveData || { symbol: sym }, marketConfig);
 
+                // Detect if this symbol is outside the current active mode's instrument universe
+                const isOutOfMode = supportedInstruments.length > 0 &&
+                  !supportedInstruments.some((inst) => inst.symbol.toUpperCase() === sym);
+
                 // Consistency guarantees:
                 // Only show price if live price is present and numeric; otherwise "-- (Awaiting data)"
-                const hasValidPrice = liveData?.price != null && !isNaN(Number(liveData.price)) && Number(liveData.price) > 0;
+                const hasValidPrice = !isOutOfMode && liveData?.price != null && !isNaN(Number(liveData.price)) && Number(liveData.price) > 0;
                 const isUp = (liveData?.priceChangePercent ?? 0) >= 0;
 
                 // Only show conviction if analytics are warmed up and present; otherwise "-- (Awaiting data)"
-                const hasConviction = liveData?.ready !== false && liveData?.convictionScore != null && !isNaN(Number(liveData.convictionScore));
+                const hasConviction = !isOutOfMode && liveData?.ready !== false && liveData?.convictionScore != null && !isNaN(Number(liveData.convictionScore));
 
                 return (
                   <tr key={item.id || sym}>
@@ -324,7 +328,9 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
                       {hasValidPrice ? (
                         `${cur}${Number(liveData.price).toFixed(2)}`
                       ) : (
-                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>-- (Awaiting data)</span>
+                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                          {isOutOfMode ? '— Not tracked in current mode' : '-- (Awaiting data)'}
+                        </span>
                       )}
                     </td>
 
@@ -347,7 +353,9 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
                           </span>
                         </div>
                       ) : (
-                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>-- (Awaiting data)</span>
+                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                          {isOutOfMode ? '— Not tracked in current mode' : '-- (Awaiting data)'}
+                        </span>
                       )}
                     </td>
 

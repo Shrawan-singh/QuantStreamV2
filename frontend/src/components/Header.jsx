@@ -22,7 +22,7 @@ export default function Header({
   const isLive = marketConfig?.mode === 'live';
 
   useEffect(() => {
-    fetch(`${apiBase || 'http://localhost:8080'}/api/instruments`)
+    fetch(`${apiBase || 'http://localhost:8080'}/api/instruments/active`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {

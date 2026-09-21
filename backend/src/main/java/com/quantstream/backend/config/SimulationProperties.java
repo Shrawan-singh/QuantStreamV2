@@ -49,10 +49,18 @@ public class SimulationProperties {
     }
 
     public List<String> getSymbols() {
+        if (symbols == null || symbols.isEmpty()) {
+            return InstrumentRegistry.getSimulationSymbols();
+        }
         return symbols;
     }
 
     public void setSymbols(List<String> symbols) {
-        this.symbols = symbols;
+        List<String> filtered = symbols == null ? List.of() : symbols.stream().filter(s -> s != null && !s.isBlank()).toList();
+        if (!filtered.isEmpty()) {
+            this.symbols = new ArrayList<>(filtered);
+        } else {
+            this.symbols = new ArrayList<>(InstrumentRegistry.getSimulationSymbols());
+        }
     }
 }

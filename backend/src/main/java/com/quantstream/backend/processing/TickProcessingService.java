@@ -72,6 +72,16 @@ public class TickProcessingService {
         );
     }
 
+    public TickProcessingService(TickValidationService tickValidationService, AnalyticsEngine analyticsEngine) {
+        this(
+                tickValidationService,
+                analyticsEngine,
+                null,
+                null,
+                null
+        );
+    }
+
     private static AnalyticsEngine createDefaultAnalyticsEngine() {
         IndicatorProperties indProps = IndicatorProperties.defaultProperties();
         ScoringProperties scProps = ScoringProperties.defaultProperties();
@@ -112,7 +122,7 @@ public class TickProcessingService {
             persistenceService.enqueue(snapshot);
         }
 
-        logger.info("Processed tick total={} symbol={} price={} score={} thread={}",
+        logger.debug("Processed tick total={} symbol={} price={} score={} thread={}",
                 total,
                 tick.symbol(),
                 tick.price(),

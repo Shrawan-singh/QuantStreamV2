@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LineChart, Play } from 'lucide-react';
 import { currencySymbol, exchangeTag } from '../lib/marketUtils';
 
@@ -42,14 +42,18 @@ export default function InteractiveChart({ symbol, currentPrice, currentSma, api
   }, [symbol, apiBase]);
 
   // Combine fetched history with the latest real-time tick to draw the full chart
-  const chartData = [...history];
-  if (currentPrice != null && !isNaN(Number(currentPrice)) && Number(currentPrice) > 0) {
-    chartData.push({
-      timestamp: Date.now(),
-      closePrice: Number(currentPrice),
-      sma20: currentSma != null && !isNaN(Number(currentSma)) && Number(currentSma) > 0 ? Number(currentSma) : null,
-    });
-  }
+  const chartData = useMemo(() => {
+    const data = [...history];
+    if (currentPrice != null && !isNaN(Number(currentPrice)) && Number(currentPrice) > 0) {
+      const lastItem = history.length > 0 ? history[history.length - 1] : null;
+      data.push({
+        timestamp: lastItem ? lastItem.timestamp : null,
+        closePrice: Number(currentPrice),
+        sma20: currentSma != null && !isNaN(Number(currentSma)) && Number(currentSma) > 0 ? Number(currentSma) : null,
+      });
+    }
+    return data;
+  }, [history, currentPrice, currentSma]);
 
   // Calculate scales and SVG paths
   const width = 800;

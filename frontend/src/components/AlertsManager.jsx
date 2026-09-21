@@ -51,7 +51,7 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
   useEffect(() => {
     async function loadInstruments() {
       try {
-        const res = await fetch(`${endpoint}/api/instruments`);
+        const res = await fetch(`${endpoint}/api/instruments/active`);
         if (res.ok) {
           const list = await res.json();
           setSupportedInstruments(list || []);
@@ -403,6 +403,10 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
                 const isEnabled = alert.enabled === true;
                 const state = isTriggered ? 'TRIGGERED' : (isEnabled ? 'ACTIVE' : 'DISABLED');
 
+                const sym = alert.symbol?.toUpperCase();
+                const isOutOfMode = supportedInstruments.length > 0 &&
+                  !supportedInstruments.some((inst) => inst.symbol.toUpperCase() === sym);
+
                 return (
                   <tr key={alert.id} style={{ background: isTriggered ? 'rgba(245, 158, 11, 0.04)' : undefined }}>
                     <td className="mono font-extrabold text-primary">{alert.symbol}</td>
@@ -412,19 +416,21 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
                     </td>
 
                     <td>
-                      {state === 'ACTIVE' && (
+                      {isOutOfMode ? (
+                        <span className="badge badge-muted" title="Symbol is not in the active market mode universe">
+                          OUT OF MODE
+                        </span>
+                      ) : state === 'ACTIVE' ? (
                         <span className="badge badge-bullish flex-row items-center gap-xs">
                           <span className="live-dot" style={{ width: '6px', height: '6px' }} />
                           ACTIVE
                         </span>
-                      )}
-                      {state === 'TRIGGERED' && (
+                      ) : state === 'TRIGGERED' ? (
                         <span className="badge badge-neutral flex-row items-center gap-xs font-bold">
                           <AlertTriangle size={12} />
                           TRIGGERED
                         </span>
-                      )}
-                      {state === 'DISABLED' && (
+                      ) : (
                         <span className="badge badge-muted">
                           DISABLED
                         </span>
@@ -432,7 +438,11 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
                     </td>
 
                     <td>
-                      {isTriggered ? (
+                      {isOutOfMode ? (
+                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                          — Not tracked in current mode
+                        </span>
+                      ) : isTriggered ? (
                         <div>
                           <div className="mono font-bold text-neutral" style={{ fontSize: '0.8rem' }}>
                             Breached at: {Number(alert.triggeredValue).toFixed(2)}

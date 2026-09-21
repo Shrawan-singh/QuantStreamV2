@@ -30,7 +30,7 @@ class AlertValidationTest {
         alertRepository = Mockito.mock(AlertConfigRepository.class);
         historyRepository = Mockito.mock(AlertTriggerHistoryRepository.class);
         alertExecutionService = Mockito.mock(AlertExecutionService.class);
-        controller = new AlertController(alertRepository, historyRepository, alertExecutionService);
+        controller = new AlertController(alertRepository, historyRepository, alertExecutionService, "simulation");
     }
 
     @Test
@@ -61,7 +61,8 @@ class AlertValidationTest {
         assertEquals(400, response.getStatusCode().value());
         @SuppressWarnings("unchecked")
         Map<String, String> body = (Map<String, String>) response.getBody();
-        assertEquals("Instrument not found in the supported market universe.", body.get("error"));
+        assertTrue(body.get("error").contains("INVALID_CO"));
+        assertTrue(body.get("error").contains("simulation"));
     }
 
     @Test

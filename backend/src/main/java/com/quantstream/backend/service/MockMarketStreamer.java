@@ -2,7 +2,7 @@ package com.quantstream.backend.service;
 
 import com.quantstream.backend.config.SimulationProperties;
 import com.quantstream.backend.marketdata.MarketDataProvider;
-import com.quantstream.backend.messaging.StockTickKafkaProducer;
+import com.quantstream.backend.messaging.TickPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -16,37 +16,42 @@ public class MockMarketStreamer {
     private static final Logger logger = LoggerFactory.getLogger(MockMarketStreamer.class);
 
     private final MarketDataProvider marketDataProvider;
-    private final StockTickKafkaProducer stockTickKafkaProducer;
+    private final TickPublisher tickPublisher;
     private final SimulationProperties simulationProperties;
 
     @org.springframework.beans.factory.annotation.Value("${quantstream.marketdata.mode:simulation}")
     private String marketDataMode;
 
-    @org.springframework.beans.factory.annotation.Value("${quantstream.marketdata.symbols:AAPL,MSFT,AMZN,NVDA,GOOGL,META,TSLA}")
+    @org.springframework.beans.factory.annotation.Value("${quantstream.marketdata.symbols:}")
     private List<String> liveSymbols;
 
     private volatile boolean started;
 
     public MockMarketStreamer(MarketDataProvider marketDataProvider,
-                              StockTickKafkaProducer stockTickKafkaProducer,
+                              TickPublisher tickPublisher,
                               SimulationProperties simulationProperties) {
         this.marketDataProvider = marketDataProvider;
-        this.stockTickKafkaProducer = stockTickKafkaProducer;
+        this.tickPublisher = tickPublisher;
         this.simulationProperties = simulationProperties;
     }
 
     public synchronized void start() {
-        if (started || !simulationProperties.isAutoStart()) {
+        if (started) {
             return;
         }
 
-        marketDataProvider.setTickListener(stockTickKafkaProducer::publish);
+        boolean isLive = "live".equalsIgnoreCase(marketDataMode);
+        if (!isLive && !simulationProperties.isAutoStart()) {
+            return;
+        }
+
+        marketDataProvider.setTickListener(tickPublisher::publish);
 
         List<String> symbolsToSubscribe;
         if ("live".equalsIgnoreCase(marketDataMode)) {
             symbolsToSubscribe = (liveSymbols != null && !liveSymbols.isEmpty())
                     ? liveSymbols
-                    : List.of("AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA");
+                    : com.quantstream.backend.domain.InstrumentRegistry.getLiveSymbols();
         } else {
             symbolsToSubscribe = simulationProperties.getSymbols();
         }

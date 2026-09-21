@@ -39,7 +39,9 @@ public record AnalyticsSnapshot(
         List<String> explanations,
         boolean ready,
         TickSource source,
-        Instant timestamp
+        Instant timestamp,
+        double rawConvictionScore,
+        double realizedVolatility
 ) {
     public AnalyticsSnapshot {
         if (factorScores != null) {
@@ -54,5 +56,66 @@ public record AnalyticsSnapshot(
         if (explanations != null) {
             explanations = Collections.unmodifiableList(explanations);
         }
+    }
+
+    /**
+     * Backwards-compatible 25-argument constructor.
+     */
+    public AnalyticsSnapshot(
+            String symbol,
+            String companyName,
+            BigDecimal price,
+            BigDecimal previousPrice,
+            BigDecimal priceChange,
+            double priceChangePercent,
+            BigDecimal openPrice,
+            BigDecimal highPrice,
+            BigDecimal lowPrice,
+            long volume,
+            long cumulativeVolume,
+            double sma,
+            double ema,
+            double rsi,
+            double momentum,
+            double relativeVolume,
+            double convictionScore,
+            ScoreCategory scoreCategory,
+            Map<String, Double> factorScores,
+            Map<String, Double> scoreBreakdown,
+            Map<String, Signal> signals,
+            List<String> explanations,
+            boolean ready,
+            TickSource source,
+            Instant timestamp
+    ) {
+        this(
+                symbol,
+                companyName,
+                price,
+                previousPrice,
+                priceChange,
+                priceChangePercent,
+                openPrice,
+                highPrice,
+                lowPrice,
+                volume,
+                cumulativeVolume,
+                sma,
+                ema,
+                rsi,
+                momentum,
+                relativeVolume,
+                convictionScore,
+                scoreCategory,
+                factorScores,
+                scoreBreakdown,
+                signals,
+                explanations,
+                ready,
+                source,
+                timestamp,
+                convictionScore,
+                0.0
+        );
     }
 }

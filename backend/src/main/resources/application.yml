@@ -37,13 +37,13 @@ quantstream:
     provider: ${MARKET_DATA_PROVIDER:finnhub}
     api-key: ${FINNHUB_API_KEY:}
     websocket-url: ${FINNHUB_WEBSOCKET_URL:wss://ws.finnhub.io}
-    symbols: ${LIVE_SYMBOLS:AAPL,MSFT,AMZN,NVDA,GOOGL,META,TSLA}
+    symbols: ${LIVE_SYMBOLS:}
   simulation:
     auto-start: ${SIMULATION_AUTO_START:true}
     seed: ${SIMULATION_SEED:20260902}
     interval-ms: ${SIMULATION_INTERVAL_MS:500}
-    symbols: ${SIMULATION_SYMBOLS:RELIANCE,TCS,INFY,HDFCBANK,ICICIBANK,SBIN,BHARTIARTL,ITC,KOTAKBANK,LT,HINDUNILVR,AXISBANK,MARUTI,SUNPHARMA,TATAMOTORS,BAJFINANCE,ASIANPAINT,TITAN,WIPRO,ULTRACEMCO,NTPC,ONGC,POWERGRID,MM,ADANIENT,ADANIPORTS,COALINDIA,TATASTEEL,JSWSTEEL,HCLTECH,BAJAJFINSV,TECHM,INDUSINDBK,NESTLEIND,GRASIM,CIPLA,DRREDDY,EICHERMOT,APOLLOHOSP,BPCL}
-  streaming:
+    symbols: ${SIMULATION_SYMBOLS:}
+    streaming:
     market-ticks-topic: ${KAFKA_TOPIC_MARKET_TICKS:market-ticks}
     consumer-group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
     queue-size: ${QUEUE_SIZE:1000}
@@ -67,4 +67,11 @@ quantstream:
     momentum-weight: ${SCORING_MOMENTUM_WEIGHT:25.0}
     rsi-weight: ${SCORING_RSI_WEIGHT:25.0}
     volume-weight: ${SCORING_VOLUME_WEIGHT:25.0}
+    volatility-lookback: ${SCORING_VOLATILITY_LOOKBACK:20}
+    min-volatility-lookback: ${SCORING_MIN_VOLATILITY_LOOKBACK:5}
+    z-score-cap: ${SCORING_Z_SCORE_CAP:3.0}
+    ema-confirmation-bonus: ${SCORING_EMA_CONFIRMATION_BONUS:4.0}
+    ema-divergence-penalty: ${SCORING_EMA_DIVERGENCE_PENALTY:3.0}
+    smoothing-alpha: ${SCORING_SMOOTHING_ALPHA:0.20}
+    hysteresis-band: ${SCORING_HYSTERESIS_BAND:1.5}
 

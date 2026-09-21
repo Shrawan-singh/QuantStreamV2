@@ -4,6 +4,7 @@ import com.quantstream.backend.analytics.indicator.IndicatorResult;
 import com.quantstream.backend.analytics.indicator.Signal;
 import com.quantstream.backend.analytics.state.MarketState;
 import com.quantstream.backend.config.ScoringProperties;
+import com.quantstream.backend.domain.InstrumentRegistry;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -13,39 +14,31 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Deterministic, continuous scoring engine that combines quantitative technical
- * indicators into a unified Conviction Score on a continuous 0–100 scale.
+ * Deterministic, statistically rigorous Conviction Score engine.
  *
- * <h3>Continuous Normalization Model:</h3>
+ * <p>Key quantitative enhancements:
  * <ul>
- *   <li><b>Trend (0–100)</b>: Linear mapping of price divergence relative to 20-period SMA:
- *       <pre>diffPct = ((Price - SMA) / SMA) * 100.0
- * trendScore = clamp(50.0 + (diffPct / 2.0) * 50.0, 0.0, 100.0)</pre>
- *       A divergence of &plusmn;2.0% maps continuously to [0, 100], with 0.0% divergence at 50.0 (neutral).
- *   </li>
- *   <li><b>Momentum (0–100)</b>: Linear mapping of 10-period price rate of change:
- *       <pre>momentumScore = clamp(50.0 + (momentumPct / 2.0) * 50.0, 0.0, 100.0)</pre>
- *       A price change of &plusmn;2.0% over lookback maps continuously to [0, 100], with 0.0% change at 50.0.
- *   </li>
- *   <li><b>RSI (0–100)</b>: Direct Wilder RSI index value:
- *       <pre>rsiScore = clamp(RSI, 0.0, 100.0)</pre>
- *   </li>
- *   <li><b>Relative Volume (0–100)</b>: Linear mapping of volume ratio relative to 20-period average:
- *       <pre>volumeScore = clamp(RVOL * 50.0, 0.0, 100.0)</pre>
- *       Baseline 1.0x volume maps to 50.0; elevated 2.0x volume maps to 100.0.
- *   </li>
+ *   <li><b>Realized Volatility Normalization:</b> Normalizes SMA divergence and price momentum
+ *       by rolling standard deviation of log returns \(r_t = \ln(P_t / P_{t-1})\) rather than fixed &plusmn;2% thresholds.</li>
+ *   <li><b>Volatility-Relative Trend:</b> \(Z_{\text{trend}} = \frac{P - \text{SMA}}{\text{SMA} \times \sigma_{\text{realized}}}\).
+ *       Bounded symmetric mapping to [0, 100] with \(Z_{\max} = 3.0\).</li>
+ *   <li><b>Volatility-Relative Momentum:</b> \(Z_{\text{mom}} = \frac{R_{\text{lookback}}}{\sigma_{\text{realized}}}\).
+ *       Bounded symmetric mapping to [0, 100] with \(Z_{\max} = 3.0\).</li>
+ *   <li><b>EMA Confirmation:</b> Explicit trend-confirmation signal (bullish bonus, bearish penalty, or divergence penalty).</li>
+ *   <li><b>Score Smoothing:</b> Exponential Moving Average (EMA) smoothing of displayed score (\(\alpha = 0.20\))
+ *       while preserving rawConvictionScore for auditing.</li>
+ *   <li><b>Category Hysteresis:</b> Eliminates rapid flipping around 40.0 and 60.0 boundary thresholds with a &plusmn;1.5 hysteresis band.</li>
  * </ul>
- *
- * <p>Composite Conviction Score:
- * <pre>finalScore = (w_trend * trendScore + w_mom * momentumScore + w_rsi * rsiScore + w_vol * volumeScore) / totalWeight</pre>
- * Clamped to [0.0, 100.0] and rounded to one decimal place.</p>
+ * </p>
  */
 @Component
 public class ConvictionScoreEngine {
 
     private final ScoringProperties properties;
+    private final ConcurrentHashMap<String, SymbolScoreState> symbolStates = new ConcurrentHashMap<>();
 
     public ConvictionScoreEngine(ScoringProperties properties) {
         this.properties = properties != null ? properties : ScoringProperties.defaultProperties();
@@ -87,27 +80,147 @@ public class ConvictionScoreEngine {
         double wRsi = properties.rsiWeight() / totalWeight;
         double wVolume = properties.volumeWeight() / totalWeight;
 
-        // 1. Trend Factor Score [0 - 100]
+        // 0. Compute Realized Volatility from price history: rolling std dev of log returns
+        List<BigDecimal> recentPrices = snapshot != null ? snapshot.recentPrices() : List.of();
+        double realizedVol = calculateRealizedVolatility(
+                recentPrices,
+                properties.volatilityLookback(),
+                properties.minVolatilityLookback()
+        );
+
+        String curSym = InstrumentRegistry.getInstrument(symbol)
+                .map(com.quantstream.backend.domain.Instrument::currency)
+                .filter("USD"::equalsIgnoreCase)
+                .map(c -> "$")
+                .orElse("₹");
+
+        List<String> explanations = new ArrayList<>(6);
+
+        // 1. Trend Factor Score [0 - 100] (Volatility-Relative + EMA confirmation)
         double trendScore = 50.0;
         Signal trendSignal = Signal.NOT_READY;
-        IndicatorResult trendIndicator = (smaResult != null && smaResult.ready()) ? smaResult : emaResult;
-        if (trendIndicator != null && trendIndicator.ready() && snapshot != null && snapshot.latestPrice() != null) {
-            double benchmarkVal = trendIndicator.value();
+        boolean hasSma = smaResult != null && smaResult.ready();
+        boolean hasEma = emaResult != null && emaResult.ready();
+
+        if ((hasSma || hasEma) && snapshot != null && snapshot.latestPrice() != null) {
+            double currentPrice = snapshot.latestPrice().doubleValue();
+            double benchmarkVal = hasSma ? smaResult.value() : emaResult.value();
+            String benchmarkName = hasSma ? "SMA" : "EMA";
+
             if (benchmarkVal > 0.0) {
-                double currentPrice = snapshot.latestPrice().doubleValue();
-                double diffPct = ((currentPrice - benchmarkVal) / benchmarkVal) * 100.0;
-                trendScore = clamp(50.0 + (diffPct / 2.0) * 50.0, 0.0, 100.0);
+                double smaDivergence = (currentPrice - benchmarkVal) / benchmarkVal;
+
+                if (realizedVol < 0.0) {
+                    // Insufficient return history to calculate realized volatility
+                    trendScore = 50.0;
+                    trendSignal = Signal.NOT_READY;
+                    explanations.add(String.format("Trend: 50.0 (Price %s%.2f vs %s %s%.2f; awaiting %d-period return history for realized volatility)",
+                            curSym, currentPrice, benchmarkName, curSym, benchmarkVal, properties.minVolatilityLookback()));
+                } else {
+                    double effectiveVol = realizedVol;
+                    boolean usedVolFloor = false;
+                    if (effectiveVol < 1e-6) {
+                        if (Math.abs(smaDivergence) < 1e-6) {
+                            effectiveVol = 0.0;
+                        } else {
+                            effectiveVol = 0.005; // 0.5% return volatility floor fallback
+                            usedVolFloor = true;
+                        }
+                    }
+
+                    double trendZ = 0.0;
+                    if (effectiveVol > 0.0) {
+                        trendZ = smaDivergence / effectiveVol;
+                    }
+
+                    double trendBase = clamp(50.0 + (trendZ / properties.zScoreCap()) * 50.0, 0.0, 100.0);
+
+                    // Step 1D: EMA Confirmation
+                    String emaExplanation = null;
+                    if (hasSma && hasEma) {
+                        double smaVal = smaResult.value();
+                        double emaVal = emaResult.value();
+
+                        if (currentPrice > smaVal && currentPrice > emaVal) {
+                            trendScore = clamp(trendBase + properties.emaConfirmationBonus(), 0.0, 100.0);
+                            emaExplanation = String.format("SMA and EMA agree bullish (+%.1f pts trend confirmation)", properties.emaConfirmationBonus());
+                        } else if (currentPrice < smaVal && currentPrice < emaVal) {
+                            trendScore = clamp(trendBase - properties.emaConfirmationBonus(), 0.0, 100.0);
+                            emaExplanation = String.format("SMA and EMA agree bearish (-%.1f pts negative trend confirmation)", properties.emaConfirmationBonus());
+                        } else {
+                            // Divergence: neutral penalty toward 50.0
+                            double penalty = properties.emaDivergencePenalty();
+                            if (trendBase > 50.0) {
+                                trendScore = Math.max(50.0, trendBase - penalty);
+                            } else if (trendBase < 50.0) {
+                                trendScore = Math.min(50.0, trendBase + penalty);
+                            } else {
+                                trendScore = 50.0;
+                            }
+                            emaExplanation = String.format("SMA and EMA diverge, reducing trend confirmation (%.1f pts penalty toward 50.0)", penalty);
+                        }
+                    } else {
+                        trendScore = trendBase;
+                        emaExplanation = hasSma
+                                ? "EMA unavailable; relying solely on SMA divergence without dual-MA confirmation"
+                                : "SMA unavailable; using EMA as trend benchmark without dual-MA confirmation";
+                    }
+
+                    trendSignal = scoreToSignal(trendScore);
+
+                    String volNote = usedVolFloor
+                            ? "zero volatility floor fallback: 0.50%"
+                            : String.format("realized vol: %.2f%%", realizedVol * 100.0);
+                    explanations.add(String.format("Trend: %.1f (Price %s%.2f vs %s %s%.2f, div: %+.2f%%, %s, Z: %+.2fσ)",
+                            trendScore, curSym, currentPrice, benchmarkName, curSym, benchmarkVal, smaDivergence * 100.0, volNote, trendZ));
+                    explanations.add("EMA confirmation: " + emaExplanation);
+                }
+            } else {
+                explanations.add("Trend: 50.0 (Benchmark value <= 0)");
             }
-            trendSignal = scoreToSignal(trendScore);
+        } else {
+            explanations.add("Trend: 50.0 (Awaiting sufficient history for SMA/EMA)");
         }
 
-        // 2. Momentum Factor Score [0 - 100]
+        // 2. Momentum Factor Score [0 - 100] (Volatility-Relative)
         double momentumScore = 50.0;
         Signal momentumSignal = Signal.NOT_READY;
         if (momentumResult != null && momentumResult.ready()) {
-            double momentumVal = momentumResult.value();
-            momentumScore = clamp(50.0 + (momentumVal / 2.0) * 50.0, 0.0, 100.0);
-            momentumSignal = scoreToSignal(momentumScore);
+            double momentumPct = momentumResult.value();
+            double momentumReturn = momentumPct / 100.0;
+
+            if (realizedVol < 0.0) {
+                momentumScore = 50.0;
+                momentumSignal = Signal.NOT_READY;
+                explanations.add(String.format("Momentum: 50.0 (Lookback change: %+.2f%%; awaiting realized volatility history)", momentumPct));
+            } else {
+                double effectiveVol = realizedVol;
+                boolean usedVolFloor = false;
+                if (effectiveVol < 1e-6) {
+                    if (Math.abs(momentumReturn) < 1e-6) {
+                        effectiveVol = 0.0;
+                    } else {
+                        effectiveVol = 0.005;
+                        usedVolFloor = true;
+                    }
+                }
+
+                double momentumZ = 0.0;
+                if (effectiveVol > 0.0) {
+                    momentumZ = momentumReturn / effectiveVol;
+                }
+
+                momentumScore = clamp(50.0 + (momentumZ / properties.zScoreCap()) * 50.0, 0.0, 100.0);
+                momentumSignal = scoreToSignal(momentumScore);
+
+                String volNote = usedVolFloor
+                        ? "vol floor 0.50%"
+                        : String.format("realized vol: %.2f%%", realizedVol * 100.0);
+                explanations.add(String.format("Momentum: %.1f (Lookback change: %+.2f%%, %s, Z: %+.2fσ)",
+                        momentumScore, momentumPct, volNote, momentumZ));
+            }
+        } else {
+            explanations.add("Momentum: 50.0 (Awaiting lookback period)");
         }
 
         // 3. RSI Factor Score [0 - 100]
@@ -116,6 +229,9 @@ public class ConvictionScoreEngine {
         if (rsiResult != null && rsiResult.ready()) {
             rsiScore = clamp(rsiResult.value(), 0.0, 100.0);
             rsiSignal = scoreToSignal(rsiScore);
+            explanations.add(String.format("RSI: %.1f (14-period index: %.1f)", rsiScore, rsiResult.value()));
+        } else {
+            explanations.add("RSI: 50.0 (Awaiting 14-period warm-up)");
         }
 
         // 4. Relative Volume Factor Score [0 - 100]
@@ -125,6 +241,9 @@ public class ConvictionScoreEngine {
             double rvol = rvolResult.value();
             volumeScore = clamp(rvol * 50.0, 0.0, 100.0);
             volumeSignal = scoreToSignal(volumeScore);
+            explanations.add(String.format("Volume: %.1f (%.2fx of 20-period baseline)", volumeScore, rvolResult.value()));
+        } else {
+            explanations.add("Volume: 50.0 (Awaiting volume history)");
         }
 
         // Round factor scores to 1 decimal place
@@ -139,41 +258,30 @@ public class ConvictionScoreEngine {
         double rsiContribution = roundOneDecimal(wRsi * rsiScore);
         double volumeContribution = roundOneDecimal(wVolume * volumeScore);
 
-        // Composite Final Score: rounded to 1 decimal place
-        double rawFinalScore = (wTrend * trendScore) + (wMomentum * momentumScore) + (wRsi * rsiScore) + (wVolume * volumeScore);
-        double compositeScore = roundOneDecimal(clamp(rawFinalScore, 0.0, 100.0));
+        // Composite Raw Score: rounded to 1 decimal place
+        double rawFinalScore = trendContribution + momentumContribution + rsiContribution + volumeContribution;
+        double rawScore = roundOneDecimal(clamp(rawFinalScore, 0.0, 100.0));
 
-        ScoreCategory category = ScoreCategory.fromScore(compositeScore);
+        // 5. Score Smoothing (EMA) & Category Hysteresis
+        SymbolScoreState prevState = symbolStates.get(symbol);
+        double alpha = properties.smoothingAlpha();
+        double smoothed;
 
-        // Build explainability list
-        List<String> explanations = new ArrayList<>(4);
-        if (trendIndicator != null && trendIndicator.ready() && snapshot != null) {
-            explanations.add(String.format("Trend: %.1f (Price ₹%s vs SMA ₹%.2f)",
-                    trendScore, snapshot.latestPrice(), trendIndicator.value()));
+        if (prevState == null) {
+            smoothed = rawScore;
         } else {
-            explanations.add("Trend: 50.0 (Awaiting sufficient history for SMA)");
+            smoothed = (alpha * rawScore) + ((1.0 - alpha) * prevState.smoothedScore);
         }
+        double smoothedScore = roundOneDecimal(clamp(smoothed, 0.0, 100.0));
 
-        if (momentumResult != null && momentumResult.ready()) {
-            explanations.add(String.format("Momentum: %.1f (Lookback change: %+.2f%%)",
-                    momentumScore, momentumResult.value()));
-        } else {
-            explanations.add("Momentum: 50.0 (Awaiting lookback period)");
-        }
+        ScoreCategory lastCategory = prevState != null ? prevState.lastCategory : null;
+        ScoreCategory category = calculateCategoryWithHysteresis(smoothedScore, lastCategory, properties.hysteresisBand());
 
-        if (rsiResult != null && rsiResult.ready()) {
-            explanations.add(String.format("RSI: %.1f (14-period index: %.1f)",
-                    rsiScore, rsiResult.value()));
-        } else {
-            explanations.add("RSI: 50.0 (Awaiting 14-period warm-up)");
-        }
+        // Update state cache for symbol
+        symbolStates.put(symbol, new SymbolScoreState(smoothedScore, category, rawScore));
 
-        if (rvolResult != null && rvolResult.ready()) {
-            explanations.add(String.format("Volume: %.1f (%.2fx of 20-period baseline)",
-                    volumeScore, rvolResult.value()));
-        } else {
-            explanations.add("Volume: 50.0 (Awaiting volume history)");
-        }
+        explanations.add(String.format("Score smoothing & hysteresis: displayed=%.1f (raw=%.1f, α=%.2f; category=%s with ±%.1f hysteresis)",
+                smoothedScore, rawScore, alpha, category.getDisplayName(), properties.hysteresisBand()));
 
         Map<String, Signal> signals = new HashMap<>();
         signals.put("trend", trendSignal);
@@ -181,9 +289,11 @@ public class ConvictionScoreEngine {
         signals.put("rsi", rsiSignal);
         signals.put("volume", volumeSignal);
 
+        double displayVolatility = realizedVol >= 0.0 ? roundFourDecimals(realizedVol) : 0.0;
+
         return new ConvictionScore(
                 symbol,
-                compositeScore,
+                smoothedScore,
                 category,
                 trendScore,
                 momentumScore,
@@ -196,8 +306,133 @@ public class ConvictionScoreEngine {
                 explanations,
                 signals,
                 true,
-                timestamp
+                timestamp,
+                rawScore,
+                smoothedScore,
+                displayVolatility
         );
+    }
+
+    /**
+     * Calculates rolling standard deviation of log returns r_t = ln(P_t / P_{t-1}).
+     *
+     * @param prices recent price series
+     * @param lookback maximum lookback window
+     * @param minLookback minimum prices needed to compute volatility
+     * @return sample standard deviation of log returns, or -1.0 if insufficient history
+     */
+    public static double calculateRealizedVolatility(List<BigDecimal> prices, int lookback, int minLookback) {
+        if (prices == null || prices.size() < minLookback || prices.size() < 2) {
+            return -1.0;
+        }
+
+        int size = prices.size();
+        int window = Math.min(size, lookback);
+        int startIndex = size - window;
+
+        int returnsCount = window - 1;
+        if (returnsCount < 1) {
+            return -1.0;
+        }
+
+        double[] logReturns = new double[returnsCount];
+        double sum = 0.0;
+
+        for (int i = 0; i < returnsCount; i++) {
+            double pPrev = prices.get(startIndex + i).doubleValue();
+            double pCurr = prices.get(startIndex + i + 1).doubleValue();
+
+            if (pPrev <= 0.0 || pCurr <= 0.0) {
+                return -1.0;
+            }
+
+            double r = Math.log(pCurr / pPrev);
+            logReturns[i] = r;
+            sum += r;
+        }
+
+        double mean = sum / returnsCount;
+
+        if (returnsCount == 1) {
+            return Math.abs(logReturns[0]);
+        }
+
+        double sumSquaredDiff = 0.0;
+        for (double r : logReturns) {
+            double diff = r - mean;
+            sumSquaredDiff += diff * diff;
+        }
+
+        double variance = sumSquaredDiff / (returnsCount - 1);
+        double stdDev = Math.sqrt(variance);
+
+        return Double.isNaN(stdDev) ? 0.0 : stdDev;
+    }
+
+    /**
+     * Deterministic category hysteresis to prevent flipping around 40.0 and 60.0.
+     *
+     * @param score current smoothed score
+     * @param previous previous qualitative category
+     * @param h hysteresis band width
+     * @return qualitative score category
+     */
+    public static ScoreCategory calculateCategoryWithHysteresis(double score, ScoreCategory previous, double h) {
+        if (previous == null) {
+            return ScoreCategory.fromScore(score);
+        }
+
+        switch (previous) {
+            case VERY_STRONG:
+                // Normal boundary is 80.0. To fall to STRONG, must drop below 80.0 - h
+                if (score < (80.0 - h)) {
+                    return calculateCategoryWithHysteresis(score, ScoreCategory.STRONG, h);
+                }
+                return ScoreCategory.VERY_STRONG;
+
+            case STRONG:
+                // To rise to VERY_STRONG: score >= 80.0 + h
+                if (score >= (80.0 + h)) {
+                    return ScoreCategory.VERY_STRONG;
+                }
+                // Normal boundary is 60.0. To fall to NEUTRAL, must drop below 60.0 - h (e.g. < 58.5)
+                if (score < (60.0 - h)) {
+                    return calculateCategoryWithHysteresis(score, ScoreCategory.NEUTRAL, h);
+                }
+                return ScoreCategory.STRONG;
+
+            case NEUTRAL:
+                // Normal boundary is 60.0. To rise to STRONG, must exceed 60.0 + h (e.g. >= 61.5)
+                if (score >= (60.0 + h)) {
+                    return ScoreCategory.STRONG;
+                }
+                // Normal boundary is 40.0. To fall to WEAK, must drop below 40.0 - h (e.g. <= 38.5)
+                if (score <= (40.0 - h)) {
+                    return ScoreCategory.WEAK;
+                }
+                return ScoreCategory.NEUTRAL;
+
+            case WEAK:
+                // Normal boundary is 40.0. To rise to NEUTRAL, must exceed 40.0 + h (e.g. > 41.5)
+                if (score > (40.0 + h)) {
+                    return calculateCategoryWithHysteresis(score, ScoreCategory.NEUTRAL, h);
+                }
+                // Normal boundary is 20.0. To fall to VERY_WEAK, must drop below 20.0 - h
+                if (score <= (20.0 - h)) {
+                    return ScoreCategory.VERY_WEAK;
+                }
+                return ScoreCategory.WEAK;
+
+            case VERY_WEAK:
+                // To rise to WEAK: score > 20.0 + h
+                if (score > (20.0 + h)) {
+                    return calculateCategoryWithHysteresis(score, ScoreCategory.WEAK, h);
+                }
+                return ScoreCategory.VERY_WEAK;
+
+            default:
+                return ScoreCategory.fromScore(score);
+        }
     }
 
     private Signal scoreToSignal(double score) {
@@ -206,11 +441,49 @@ public class ConvictionScoreEngine {
         return Signal.NEUTRAL;
     }
 
-    private double clamp(double val, double min, double max) {
+    private static double clamp(double val, double min, double max) {
         return Math.max(min, Math.min(max, val));
     }
 
-    private double roundOneDecimal(double val) {
+    private static double roundOneDecimal(double val) {
         return BigDecimal.valueOf(val).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static double roundFourDecimals(double val) {
+        return BigDecimal.valueOf(val).setScale(4, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    public void clear() {
+        symbolStates.clear();
+    }
+
+    public void resetSymbol(String symbol) {
+        if (symbol != null) {
+            symbolStates.remove(symbol.trim().toUpperCase());
+        }
+    }
+
+    public static final class SymbolScoreState {
+        final double smoothedScore;
+        final ScoreCategory lastCategory;
+        final double rawScore;
+
+        public SymbolScoreState(double smoothedScore, ScoreCategory lastCategory, double rawScore) {
+            this.smoothedScore = smoothedScore;
+            this.lastCategory = lastCategory;
+            this.rawScore = rawScore;
+        }
+
+        public double getSmoothedScore() {
+            return smoothedScore;
+        }
+
+        public ScoreCategory getCategory() {
+            return lastCategory;
+        }
+
+        public double getRawScore() {
+            return rawScore;
+        }
     }
 }

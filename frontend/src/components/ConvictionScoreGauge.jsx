@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 
-export default function ConvictionScoreGauge({ snapshot }) {
+export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = false }) {
+  const [showBreakdown, setShowBreakdown] = useState(showBreakdownInitial);
+
   if (!snapshot) {
     return (
       <div className="terminal-panel p-xl flex-col items-center justify-center text-center" style={{ minHeight: '300px' }}>
@@ -48,6 +50,7 @@ export default function ConvictionScoreGauge({ snapshot }) {
   // Sub-scores and weighted contributions (0.25 each)
   const factorScores = snapshot.factorScores || {};
   const scoreBreakdown = snapshot.scoreBreakdown || {};
+  const signals = snapshot.signals || {};
 
   const trendScore = factorScores.trend != null ? Number(factorScores.trend) : (scoreBreakdown.trend != null ? Number(scoreBreakdown.trend) * 4 : 50.0);
   const momentumScore = factorScores.momentum != null ? Number(factorScores.momentum) : (scoreBreakdown.momentum != null ? Number(scoreBreakdown.momentum) * 4 : 50.0);
@@ -60,22 +63,34 @@ export default function ConvictionScoreGauge({ snapshot }) {
   const volumeContr = scoreBreakdown.volume != null ? Number(scoreBreakdown.volume) : volumeScore * 0.25;
 
   const factors = [
-    { name: 'Trend', score: trendScore, contr: trendContr, color: 'var(--accent-blue)' },
-    { name: 'Momentum', score: momentumScore, contr: momentumContr, color: 'var(--accent-indigo)' },
-    { name: 'RSI', score: rsiScore, contr: rsiContr, color: 'var(--bullish)' },
-    { name: 'Volume', score: volumeScore, contr: volumeContr, color: 'var(--neutral)' }
+    { key: 'trend', name: 'Trend', score: trendScore, contr: trendContr, color: 'var(--accent-blue)' },
+    { key: 'momentum', name: 'Momentum', score: momentumScore, contr: momentumContr, color: 'var(--accent-indigo)' },
+    { key: 'rsi', name: 'RSI', score: rsiScore, contr: rsiContr, color: 'var(--bullish)' },
+    { key: 'volume', name: 'Volume', score: volumeScore, contr: volumeContr, color: 'var(--neutral)' }
   ];
 
+  const hasExplanations = snapshot.explanations && snapshot.explanations.length > 0;
+
   return (
-    <div className="terminal-panel flex-col items-center p-xl relative">
+    <div className="terminal-panel flex-col items-center p-xl relative" style={{ width: '100%' }}>
       <div className="w-full flex-row justify-between items-center mb-xs">
         <div className="flex-row items-center gap-xs">
           <span className="material-symbols-outlined text-accent" style={{ fontSize: '18px' }}>psychology</span>
           <h3 className="section-title">CONTINUOUS CONVICTION</h3>
         </div>
-        <span className="badge badge-pill" style={{ fontSize: '0.68rem', background: 'rgba(255,255,255,0.05)' }}>
-          4-FACTOR MODEL
-        </span>
+        <div className="flex-row items-center gap-xs">
+          <button
+            type="button"
+            className="btn-ghost flex-row items-center gap-2xs"
+            onClick={() => setShowBreakdown(!showBreakdown)}
+            style={{ fontSize: '0.68rem', color: 'var(--accent-blue)', padding: '2px 8px', borderRadius: '3px' }}
+          >
+            {showBreakdown ? 'HIDE DETAIL ▲' : 'FACTOR DETAIL ▸'}
+          </button>
+          <span className="badge badge-pill" style={{ fontSize: '0.68rem', background: 'rgba(255,255,255,0.05)' }}>
+            4-FACTOR MODEL
+          </span>
+        </div>
       </div>
 
       <div className="relative" style={{ width: '280px', height: '190px' }}>
@@ -139,24 +154,98 @@ export default function ConvictionScoreGauge({ snapshot }) {
         </div>
 
         <div className="flex-col gap-xs">
-          {factors.map((f) => (
-            <div key={f.name} className="flex-row justify-between items-center" style={{ fontSize: '0.78rem' }}>
-              <div className="flex-row items-center gap-xs">
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: f.color }} />
-                <span className="text-secondary">{f.name}</span>
+          {factors.map((f) => {
+            const sig = signals[f.key] || 'NEUTRAL';
+            const sigStyle = getSignalStyle(sig);
+
+            return (
+              <div key={f.name} className="flex-row justify-between items-center" style={{ fontSize: '0.78rem' }}>
+                <div className="flex-row items-center gap-xs">
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: f.color }} />
+                  <span className="text-secondary">{f.name}</span>
+                  {showBreakdown && (
+                    <span
+                      className="badge"
+                      style={{
+                        fontSize: '0.62rem',
+                        padding: '1px 5px',
+                        color: sigStyle.color,
+                        background: sigStyle.bg,
+                        border: `1px solid ${sigStyle.border}`,
+                        marginLeft: '4px'
+                      }}
+                    >
+                      {sig}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-row items-center gap-sm">
+                  {showBreakdown && (
+                    <div className="score-bar" style={{ width: '50px', height: '4px' }}>
+                      <div
+                        className="score-bar-fill"
+                        style={{
+                          width: `${Math.min(100, Math.max(0, f.score))}%`,
+                          backgroundColor: f.color,
+                        }}
+                      />
+                    </div>
+                  )}
+                  <span className="mono font-bold text-primary">{f.score.toFixed(1)}</span>
+                  <span className="mono text-muted" style={{ fontSize: '0.7rem', width: '52px', textAlign: 'right' }}>
+                    +{f.contr.toFixed(1)} pts
+                  </span>
+                </div>
               </div>
-              <div className="flex-row items-center gap-md">
-                <span className="mono font-bold text-primary">{f.score.toFixed(1)}</span>
-                <span className="mono text-muted" style={{ fontSize: '0.7rem', width: '52px', textAlign: 'right' }}>
-                  +{f.contr.toFixed(1)} pts
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* Expandable Factor Breakdown & Explanation Strings */}
+      {showBreakdown && hasExplanations && (
+        <div className="w-full mt-md pt-sm" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="flex-row justify-between items-center mb-xs">
+            <span className="label-caps" style={{ fontSize: '0.68rem', color: 'var(--accent-blue)' }}>
+              MODEL RATIONALE & INDICATOR EXPLANATION
+            </span>
+          </div>
+          <div className="flex-col gap-xs" style={{ maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
+            {snapshot.explanations.map((exp, idx) => (
+              <div
+                key={idx}
+                className="flex-row items-start gap-xs"
+                style={{
+                  fontSize: '0.72rem',
+                  lineHeight: '1.4',
+                  padding: '4px 6px',
+                  borderRadius: '3px',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.04)'
+                }}
+              >
+                <span style={{ color: 'var(--accent-blue)', marginTop: '1px' }}>▸</span>
+                <span className="text-secondary">{exp}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function getSignalStyle(sig) {
+  switch (sig) {
+    case 'POSITIVE':
+      return { color: 'var(--bullish)', bg: 'var(--bullish-bg)', border: 'rgba(16, 185, 129, 0.3)' };
+    case 'NEGATIVE':
+      return { color: 'var(--bearish)', bg: 'var(--bearish-bg)', border: 'rgba(239, 68, 68, 0.3)' };
+    case 'NOT_READY':
+      return { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)' };
+    default:
+      return { color: 'var(--neutral)', bg: 'var(--neutral-bg)', border: 'rgba(245, 158, 11, 0.3)' };
+  }
 }
 
 function getCategoryColor(cat) {

@@ -155,16 +155,25 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
               To activate <strong>{requestedMode === 'live' ? 'Live Finnhub Mode' : 'Simulation Mode'}</strong>, restart the Spring Boot backend:
             </p>
 
-            <div className="modal-code mb-lg">
+            <div className="modal-code mb-lg" style={{ fontSize: '0.75rem', lineHeight: 1.5 }}>
               {requestedMode === 'live' ? (
                 <>
-                  $env:MARKET_DATA_MODE = "live"<br />
-                  $env:FINNHUB_API_KEY = "your_finnhub_key"<br />
+                  <span className="text-muted"># macOS / Linux:</span><br />
+                  export MARKET_DATA_MODE=&quot;live&quot;<br />
+                  export FINNHUB_API_KEY=&quot;your_finnhub_key&quot;<br />
+                  ./mvnw spring-boot:run<br /><br />
+                  <span className="text-muted"># Windows (PowerShell):</span><br />
+                  $env:MARKET_DATA_MODE = &quot;live&quot;<br />
+                  $env:FINNHUB_API_KEY = &quot;your_finnhub_key&quot;<br />
                   .\mvnw.cmd spring-boot:run
                 </>
               ) : (
                 <>
-                  $env:MARKET_DATA_MODE = "simulation"<br />
+                  <span className="text-muted"># macOS / Linux:</span><br />
+                  export MARKET_DATA_MODE=&quot;simulation&quot;<br />
+                  ./mvnw spring-boot:run<br /><br />
+                  <span className="text-muted"># Windows (PowerShell):</span><br />
+                  $env:MARKET_DATA_MODE = &quot;simulation&quot;<br />
                   .\mvnw.cmd spring-boot:run
                 </>
               )}

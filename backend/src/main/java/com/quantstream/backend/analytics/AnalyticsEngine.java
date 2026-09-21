@@ -132,7 +132,9 @@ public class AnalyticsEngine {
                 convictionScore.explanations(),
                 convictionScore.ready(),
                 tick.source(),
-                stateSnapshot.latestTimestamp()
+                stateSnapshot.latestTimestamp(),
+                convictionScore.rawScore(),
+                convictionScore.realizedVolatility()
         );
 
         // 5. Cache as latest snapshot for REST and query performance

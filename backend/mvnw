@@ -1,0 +1,37 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Maven Wrapper Executable for Unix / macOS
+# ----------------------------------------------------------------------------
+
+set -e
+
+[ -z "$DEBUG" ] || set -x
+
+# Resolve directory of this script
+PRG="$0"
+while [ -h "$PRG" ]; do
+  ls=`ls -ld "$PRG"`
+  link=`expr "$ls" : '.*-> \(.*\)$'`
+  if expr "$link" : '/.*' > /dev/null; then
+    PRG="$link"
+  else
+    PRG=`dirname "$PRG"`/"$link"
+  fi
+done
+MAVEN_PROJECTBASEDIR=`dirname "$PRG"`
+export MAVEN_PROJECTBASEDIR
+
+# Find system maven or run wrapper
+if command -v mvn >/dev/null 2>&1; then
+  exec mvn "$@"
+else
+  # Fallback to downloading/running wrapper jar if java exists
+  WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+  if [ -f "$WRAPPER_JAR" ] && command -v java >/dev/null 2>&1; then
+    exec java -jar "$WRAPPER_JAR" "$@"
+  else
+    echo "Error: Neither 'mvn' nor a functional Java environment was found." >&2
+    echo "Please install Maven or Java to use ./mvnw." >&2
+    exit 1
+  fi
+fi

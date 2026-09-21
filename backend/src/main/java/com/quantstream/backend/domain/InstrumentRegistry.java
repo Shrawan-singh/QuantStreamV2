@@ -1,6 +1,14 @@
 package com.quantstream.backend.domain;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -11,10 +19,14 @@ import java.util.Optional;
 /**
  * Single source of truth for all supported market instruments across QuantStream.
  *
- * <p>Contains a validated universe of 40 realistic NSE equities (NIFTY 50 components)
- * and 7 US equities for live provider streaming.</p>
+ * <p>Loads a validated universe of ~240 NSE equities from classpath resource:
+ * {@code instruments-simulation.csv} and maintains a distinct 7 US equity universe
+ * for live market streaming.</p>
  */
 public final class InstrumentRegistry {
+
+    private static final Logger logger = LoggerFactory.getLogger(InstrumentRegistry.class);
+    private static final String SIMULATION_CSV_PATH = "instruments-simulation.csv";
 
     private static final Map<String, Instrument> REGISTRY = new LinkedHashMap<>();
     private static final List<String> SIMULATION_SYMBOLS = new ArrayList<>();
@@ -24,66 +36,208 @@ public final class InstrumentRegistry {
     );
 
     static {
-        // --- 40 Realistic NSE Equities (Indian Market Universe) ---
-        register("RELIANCE", "Reliance Industries Ltd", "NSE", "INR", "Energy", "2950.00", true);
-        register("TCS", "Tata Consultancy Services Ltd", "NSE", "INR", "Technology", "4200.00", true);
-        register("INFY", "Infosys Ltd", "NSE", "INR", "Technology", "1580.00", true);
-        register("HDFCBANK", "HDFC Bank Ltd", "NSE", "INR", "Financials", "1720.00", true);
-        register("ICICIBANK", "ICICI Bank Ltd", "NSE", "INR", "Financials", "1280.00", true);
-        register("SBIN", "State Bank of India", "NSE", "INR", "Financials", "830.00", true);
-        register("BHARTIARTL", "Bharti Airtel Ltd", "NSE", "INR", "Telecom", "1620.00", true);
-        register("ITC", "ITC Ltd", "NSE", "INR", "FMCG", "495.00", true);
-        register("KOTAKBANK", "Kotak Mahindra Bank Ltd", "NSE", "INR", "Financials", "1780.00", true);
-        register("LT", "Larsen & Toubro Ltd", "NSE", "INR", "Construction", "3620.00", true);
-        register("HINDUNILVR", "Hindustan Unilever Ltd", "NSE", "INR", "FMCG", "2750.00", true);
-        register("AXISBANK", "Axis Bank Ltd", "NSE", "INR", "Financials", "1190.00", true);
-        register("MARUTI", "Maruti Suzuki India Ltd", "NSE", "INR", "Automobile", "12450.00", true);
-        register("SUNPHARMA", "Sun Pharmaceutical Industries Ltd", "NSE", "INR", "Healthcare", "1820.00", true);
-        register("TATAMOTORS", "Tata Motors Ltd", "NSE", "INR", "Automobile", "980.00", true);
-        register("BAJFINANCE", "Bajaj Finance Ltd", "NSE", "INR", "Financials", "7200.00", true);
-        register("ASIANPAINT", "Asian Paints Ltd", "NSE", "INR", "Consumer", "2950.00", true);
-        register("TITAN", "Titan Company Ltd", "NSE", "INR", "Consumer", "3550.00", true);
-        register("WIPRO", "Wipro Ltd", "NSE", "INR", "Technology", "530.00", true);
-        register("ULTRACEMCO", "UltraTech Cement Ltd", "NSE", "INR", "Materials", "11200.00", true);
-        register("NTPC", "NTPC Ltd", "NSE", "INR", "Utilities", "410.00", true);
-        register("ONGC", "Oil & Natural Gas Corporation Ltd", "NSE", "INR", "Energy", "320.00", true);
-        register("POWERGRID", "Power Grid Corporation of India Ltd", "NSE", "INR", "Utilities", "340.00", true);
-        register("MM", "Mahindra & Mahindra Ltd", "NSE", "INR", "Automobile", "2780.00", true);
-        register("ADANIENT", "Adani Enterprises Ltd", "NSE", "INR", "Diversified", "3050.00", true);
-        register("ADANIPORTS", "Adani Ports and Special Economic Zone Ltd", "NSE", "INR", "Infrastructure", "1450.00", true);
-        register("COALINDIA", "Coal India Ltd", "NSE", "INR", "Mining", "510.00", true);
-        register("TATASTEEL", "Tata Steel Ltd", "NSE", "INR", "Metals", "155.00", true);
-        register("JSWSTEEL", "JSW Steel Ltd", "NSE", "INR", "Metals", "940.00", true);
-        register("HCLTECH", "HCL Technologies Ltd", "NSE", "INR", "Technology", "1780.00", true);
-        register("BAJAJFINSV", "Bajaj Finserv Ltd", "NSE", "INR", "Financials", "1820.00", true);
-        register("TECHM", "Tech Mahindra Ltd", "NSE", "INR", "Technology", "1610.00", true);
-        register("INDUSINDBK", "IndusInd Bank Ltd", "NSE", "INR", "Financials", "1460.00", true);
-        register("NESTLEIND", "Nestle India Ltd", "NSE", "INR", "FMCG", "2520.00", true);
-        register("GRASIM", "Grasim Industries Ltd", "NSE", "INR", "Materials", "2650.00", true);
-        register("CIPLA", "Cipla Ltd", "NSE", "INR", "Healthcare", "1640.00", true);
-        register("DRREDDY", "Dr. Reddy's Laboratories Ltd", "NSE", "INR", "Healthcare", "6600.00", true);
-        register("EICHERMOT", "Eicher Motors Ltd", "NSE", "INR", "Automobile", "4900.00", true);
-        register("APOLLOHOSP", "Apollo Hospitals Enterprise Ltd", "NSE", "INR", "Healthcare", "6850.00", true);
-        register("BPCL", "Bharat Petroleum Corporation Ltd", "NSE", "INR", "Energy", "360.00", true);
+        // 1. Load simulation instruments from external CSV resource
+        loadSimulationInstrumentsFromCsv();
 
-        // --- 7 US Equities (Live Market Finnhub Universe) ---
-        register("AAPL", "Apple Inc.", "NASDAQ", "USD", "Technology", "225.00", false);
-        register("MSFT", "Microsoft Corporation", "NASDAQ", "USD", "Technology", "445.00", false);
-        register("AMZN", "Amazon.com Inc.", "NASDAQ", "USD", "Consumer Discretionary", "185.00", false);
-        register("NVDA", "NVIDIA Corporation", "NASDAQ", "USD", "Semiconductors", "125.00", false);
-        register("GOOGL", "Alphabet Inc.", "NASDAQ", "USD", "Communication", "175.00", false);
-        register("META", "Meta Platforms Inc.", "NASDAQ", "USD", "Communication", "515.00", false);
-        register("TSLA", "Tesla Inc.", "NASDAQ", "USD", "Automobile", "210.00", false);
+        // 2. Register 50 liquid US Equities across diverse sectors (Live Market Finnhub Universe)
+        // Mega-Cap Tech & Semis
+        registerLive("AAPL", "Apple Inc.", "NASDAQ", "USD", "Technology", "235.00");
+        registerLive("MSFT", "Microsoft Corporation", "NASDAQ", "USD", "Technology", "450.00");
+        registerLive("NVDA", "NVIDIA Corporation", "NASDAQ", "USD", "Semiconductors", "130.00");
+        registerLive("AVGO", "Broadcom Inc.", "NASDAQ", "USD", "Semiconductors", "175.00");
+        registerLive("AMD", "Advanced Micro Devices Inc.", "NASDAQ", "USD", "Semiconductors", "155.00");
+        registerLive("QCOM", "QUALCOMM Incorporated", "NASDAQ", "USD", "Semiconductors", "170.00");
+        registerLive("INTC", "Intel Corporation", "NASDAQ", "USD", "Semiconductors", "22.00");
+        registerLive("CSCO", "Cisco Systems Inc.", "NASDAQ", "USD", "Technology", "50.00");
+        registerLive("ORCL", "Oracle Corporation", "NYSE", "USD", "Technology", "140.00");
+        registerLive("CRM", "Salesforce Inc.", "NYSE", "USD", "Technology", "260.00");
+        registerLive("IBM", "International Business Machines", "NYSE", "USD", "Technology", "200.00");
+        registerLive("ADBE", "Adobe Inc.", "NASDAQ", "USD", "Technology", "550.00");
+        registerLive("UBER", "Uber Technologies Inc.", "NYSE", "USD", "Technology", "75.00");
+
+        // Consumer Discretionary & Auto
+        registerLive("AMZN", "Amazon.com Inc.", "NASDAQ", "USD", "Consumer Discretionary", "190.00");
+        registerLive("TSLA", "Tesla Inc.", "NASDAQ", "USD", "Automobile", "220.00");
+        registerLive("HD", "The Home Depot Inc.", "NYSE", "USD", "Consumer Discretionary", "380.00");
+        registerLive("MCD", "McDonald's Corporation", "NYSE", "USD", "Consumer Discretionary", "290.00");
+        registerLive("NKE", "NIKE Inc.", "NYSE", "USD", "Consumer Discretionary", "85.00");
+        registerLive("SBUX", "Starbucks Corporation", "NASDAQ", "USD", "Consumer Discretionary", "95.00");
+
+        // Communication Services & Media
+        registerLive("GOOGL", "Alphabet Inc.", "NASDAQ", "USD", "Communication", "180.00");
+        registerLive("META", "Meta Platforms Inc.", "NASDAQ", "USD", "Communication", "520.00");
+        registerLive("NFLX", "Netflix Inc.", "NASDAQ", "USD", "Communication", "690.00");
+        registerLive("DIS", "The Walt Disney Company", "NYSE", "USD", "Communication", "95.00");
+        registerLive("CMCSA", "Comcast Corporation", "NASDAQ", "USD", "Communication", "40.00");
+
+        // Financials
+        registerLive("JPM", "JPMorgan Chase & Co.", "NYSE", "USD", "Financial Services", "215.00");
+        registerLive("V", "Visa Inc.", "NYSE", "USD", "Financial Services", "280.00");
+        registerLive("MA", "Mastercard Incorporated", "NYSE", "USD", "Financial Services", "480.00");
+        registerLive("BAC", "Bank of America Corporation", "NYSE", "USD", "Financial Services", "40.00");
+        registerLive("WFC", "Wells Fargo & Company", "NYSE", "USD", "Financial Services", "55.00");
+        registerLive("MS", "Morgan Stanley", "NYSE", "USD", "Financial Services", "100.00");
+        registerLive("GS", "Goldman Sachs Group Inc.", "NYSE", "USD", "Financial Services", "480.00");
+
+        // Healthcare & Pharma
+        registerLive("UNH", "UnitedHealth Group Inc.", "NYSE", "USD", "Healthcare", "580.00");
+        registerLive("JNJ", "Johnson & Johnson", "NYSE", "USD", "Healthcare", "160.00");
+        registerLive("LLY", "Eli Lilly and Company", "NYSE", "USD", "Healthcare", "950.00");
+        registerLive("ABBV", "AbbVie Inc.", "NYSE", "USD", "Healthcare", "195.00");
+        registerLive("MRK", "Merck & Co. Inc.", "NYSE", "USD", "Healthcare", "120.00");
+        registerLive("TMO", "Thermo Fisher Scientific Inc.", "NYSE", "USD", "Healthcare", "600.00");
+        registerLive("PFE", "Pfizer Inc.", "NYSE", "USD", "Healthcare", "30.00");
+        registerLive("ABT", "Abbott Laboratories", "NYSE", "USD", "Healthcare", "115.00");
+
+        // Consumer Staples
+        registerLive("WMT", "Walmart Inc.", "NYSE", "USD", "Consumer Staples", "70.00");
+        registerLive("PG", "Procter & Gamble Company", "NYSE", "USD", "Consumer Staples", "175.00");
+        registerLive("COST", "Costco Wholesale Corporation", "NASDAQ", "USD", "Consumer Staples", "880.00");
+        registerLive("KO", "The Coca-Cola Company", "NYSE", "USD", "Consumer Staples", "70.00");
+        registerLive("PEP", "PepsiCo Inc.", "NASDAQ", "USD", "Consumer Staples", "175.00");
+
+        // Energy
+        registerLive("XOM", "Exxon Mobil Corporation", "NYSE", "USD", "Energy", "115.00");
+        registerLive("CVX", "Chevron Corporation", "NYSE", "USD", "Energy", "150.00");
+
+        // Industrials
+        registerLive("CAT", "Caterpillar Inc.", "NYSE", "USD", "Industrials", "350.00");
+        registerLive("BA", "The Boeing Company", "NYSE", "USD", "Industrials", "160.00");
+        registerLive("HON", "Honeywell International Inc.", "NASDAQ", "USD", "Industrials", "205.00");
+        registerLive("GE", "GE Aerospace", "NYSE", "USD", "Industrials", "180.00");
+
+        logger.info("InstrumentRegistry initialized: {} simulation symbols (NSE), {} live symbols (US)",
+                SIMULATION_SYMBOLS.size(), LIVE_SYMBOLS.size());
     }
 
-    private static void register(String symbol, String name, String exchange, String currency, String sector, String basePrice, boolean isSimulation) {
-        Instrument inst = new Instrument(symbol, name, exchange, currency, sector, new BigDecimal(basePrice));
-        REGISTRY.put(symbol, inst);
-        if (isSimulation) {
-            SIMULATION_SYMBOLS.add(symbol);
-        } else {
-            LIVE_SYMBOLS.add(symbol);
+    private static void loadSimulationInstrumentsFromCsv() {
+        InputStream is = InstrumentRegistry.class.getClassLoader().getResourceAsStream(SIMULATION_CSV_PATH);
+        if (is == null) {
+            throw new IllegalStateException("Failed to locate required classpath resource: " + SIMULATION_CSV_PATH);
         }
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String line;
+            int lineNumber = 0;
+            boolean headerFound = false;
+
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                    continue;
+                }
+
+                String[] parts = parseCsvLine(trimmed);
+                if (!headerFound) {
+                    if (parts.length >= 6 && parts[0].equalsIgnoreCase("symbol")) {
+                        headerFound = true;
+                        continue;
+                    } else {
+                        throw new IllegalStateException("Invalid CSV header in " + SIMULATION_CSV_PATH + " at line " + lineNumber);
+                    }
+                }
+
+                if (parts.length < 6) {
+                    throw new IllegalStateException("Malformed row in " + SIMULATION_CSV_PATH + " at line " + lineNumber + ": expected 6 columns, found " + parts.length);
+                }
+
+                String symbol = parts[0].trim().toUpperCase();
+                String companyName = parts[1].trim();
+                String exchange = parts[2].trim();
+                String currency = parts[3].trim();
+                String sector = parts[4].trim();
+                String basePriceStr = parts[5].trim();
+
+                if (symbol.isEmpty()) {
+                    throw new IllegalStateException("Empty symbol in " + SIMULATION_CSV_PATH + " at line " + lineNumber);
+                }
+
+                if (REGISTRY.containsKey(symbol)) {
+                    throw new IllegalStateException("Duplicate symbol detected in InstrumentRegistry: " + symbol + " at line " + lineNumber);
+                }
+
+                BigDecimal basePrice;
+                try {
+                    basePrice = new BigDecimal(basePriceStr);
+                } catch (NumberFormatException e) {
+                    throw new IllegalStateException("Invalid base price '" + basePriceStr + "' for symbol " + symbol + " at line " + lineNumber, e);
+                }
+
+                Instrument instrument = new Instrument(symbol, companyName, exchange, currency, sector, basePrice);
+                REGISTRY.put(symbol, instrument);
+                SIMULATION_SYMBOLS.add(symbol);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Error reading " + SIMULATION_CSV_PATH, e);
+        }
+    }
+
+    private static String[] parseCsvLine(String line) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                tokens.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        tokens.add(sb.toString().trim());
+        return tokens.toArray(new String[0]);
+    }
+
+    private static void registerLive(String symbol, String name, String exchange, String currency, String sector, String basePrice) {
+        String sym = symbol.trim().toUpperCase();
+        if (REGISTRY.containsKey(sym)) {
+            throw new IllegalStateException("Duplicate symbol detected: " + sym + " conflicts between live and simulation universes");
+        }
+        Instrument inst = new Instrument(sym, name, exchange, currency, sector, new BigDecimal(basePrice));
+        REGISTRY.put(sym, inst);
+        LIVE_SYMBOLS.add(sym);
+    }
+
+    /**
+     * Checks if a symbol is supported in the currently active market mode.
+     *
+     * @param symbol the ticker symbol to validate
+     * @param mode   the active market mode ("simulation" or "live")
+     * @return true if the symbol belongs to the given mode's universe
+     */
+    public static boolean isSupportedInCurrentMode(String symbol, String mode) {
+        if (symbol == null || symbol.isBlank() || mode == null) {
+            return false;
+        }
+        String normalizedMode = mode.trim().toLowerCase();
+        return switch (normalizedMode) {
+            case "simulation" -> isSimulationSupported(symbol);
+            case "live" -> isLiveSupported(symbol);
+            default -> isSupported(symbol);
+        };
+    }
+
+    /**
+     * Returns only the instruments belonging to the active market mode.
+     *
+     * @param mode the active market mode ("simulation" or "live")
+     * @return list of instruments for the active universe
+     */
+    public static List<Instrument> getActiveUniverse(String mode) {
+        if (mode == null) {
+            return getAllSupportedInstruments();
+        }
+        String normalizedMode = mode.trim().toLowerCase();
+        return switch (normalizedMode) {
+            case "simulation" -> getSimulationUniverse();
+            case "live" -> getLiveUniverse();
+            default -> getAllSupportedInstruments();
+        };
     }
 
     private InstrumentRegistry() {}
@@ -109,6 +263,16 @@ public final class InstrumentRegistry {
     }
 
     /**
+     * Checks if a symbol is in the live US market universe.
+     */
+    public static boolean isLiveSupported(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            return false;
+        }
+        return LIVE_SYMBOLS.contains(symbol.trim().toUpperCase());
+    }
+
+    /**
      * Looks up an instrument by symbol.
      */
     public static Optional<Instrument> getInstrument(String symbol) {
@@ -130,7 +294,8 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns base reference price for simulation.
+     * Returns base reference price for simulation initialization.
+     * Note: basePrice is ONLY a deterministic seed, never a live market quote.
      */
     public static BigDecimal getBasePrice(String symbol) {
         if (symbol == null) {
@@ -141,14 +306,14 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns all registered instruments.
+     * Returns all registered instruments across all universes.
      */
     public static List<Instrument> getAllSupportedInstruments() {
         return Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
     }
 
     /**
-     * Returns all 40 simulation instruments.
+     * Returns all simulation instruments (~240 validated NSE equities).
      */
     public static List<Instrument> getSimulationUniverse() {
         List<Instrument> list = new ArrayList<>();
@@ -163,6 +328,24 @@ public final class InstrumentRegistry {
      */
     public static List<String> getSimulationSymbols() {
         return Collections.unmodifiableList(SIMULATION_SYMBOLS);
+    }
+
+    /**
+     * Returns all live US instruments (7 Finnhub equities).
+     */
+    public static List<Instrument> getLiveUniverse() {
+        List<Instrument> list = new ArrayList<>();
+        for (String s : LIVE_SYMBOLS) {
+            list.add(REGISTRY.get(s));
+        }
+        return Collections.unmodifiableList(list);
+    }
+
+    /**
+     * Returns all live symbol strings.
+     */
+    public static List<String> getLiveSymbols() {
+        return Collections.unmodifiableList(LIVE_SYMBOLS);
     }
 
     /**

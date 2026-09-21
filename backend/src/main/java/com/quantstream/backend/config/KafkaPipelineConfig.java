@@ -27,11 +27,14 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.lang.NonNull;
 import org.springframework.util.backoff.FixedBackOff;
 
+import org.springframework.context.annotation.Profile;
+
 import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
 @EnableKafka
+@Profile("!local")
 public class KafkaPipelineConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaPipelineConfig.class);

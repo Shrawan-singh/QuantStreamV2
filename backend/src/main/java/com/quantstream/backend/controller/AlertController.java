@@ -6,6 +6,7 @@ import com.quantstream.backend.domain.entity.AlertTriggerHistoryEntity;
 import com.quantstream.backend.repository.AlertConfigRepository;
 import com.quantstream.backend.repository.AlertTriggerHistoryRepository;
 import com.quantstream.backend.service.AlertExecutionService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,21 +28,25 @@ import java.util.Set;
 public class AlertController {
 
     private static final Set<String> SUPPORTED_CONDITIONS = Set.of(
-            "PRICE_ABOVE", "PRICE_BELOW", "SCORE_ABOVE", "SCORE_BELOW"
+            "PRICE_ABOVE", "PRICE_BELOW", "SCORE_ABOVE", "SCORE_BELOW",
+            "CONVICTION_ABOVE", "CONVICTION_BELOW"
     );
 
     private final AlertConfigRepository alertRepository;
     private final AlertTriggerHistoryRepository historyRepository;
     private final AlertExecutionService alertExecutionService;
+    private final String marketMode;
 
     public AlertController(
             AlertConfigRepository alertRepository,
             AlertTriggerHistoryRepository historyRepository,
-            AlertExecutionService alertExecutionService
+            AlertExecutionService alertExecutionService,
+            @Value("${quantstream.marketdata.mode:simulation}") String marketMode
     ) {
         this.alertRepository = alertRepository;
         this.historyRepository = historyRepository;
         this.alertExecutionService = alertExecutionService;
+        this.marketMode = marketMode;
     }
 
     @GetMapping
@@ -77,19 +82,26 @@ public class AlertController {
             return ResponseEntity.badRequest().body(Map.of("error", "Symbol is required"));
         }
         String symbol = request.symbol().trim().toUpperCase();
-        if (!InstrumentRegistry.isSupported(symbol)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Instrument not found in the supported market universe."));
+        if (!InstrumentRegistry.isSupportedInCurrentMode(symbol, marketMode)) {
+            String modeName = "live".equalsIgnoreCase(marketMode) ? "live (US equities)" : "simulation (NSE equities)";
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "Symbol '" + symbol + "' is not available in the current " + modeName + " mode universe."));
         }
 
-        // 2. Condition Type validation
+        // 2. Condition Type validation & normalization
         if (request.conditionType() == null || request.conditionType().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "conditionType is required"));
         }
-        String condition = request.conditionType().trim().toUpperCase();
-        if (!SUPPORTED_CONDITIONS.contains(condition)) {
+        String rawCondition = request.conditionType().trim().toUpperCase();
+        if (!SUPPORTED_CONDITIONS.contains(rawCondition)) {
             return ResponseEntity.badRequest().body(Map.of("error",
-                    "Invalid condition type. Supported: PRICE_ABOVE, PRICE_BELOW, SCORE_ABOVE, SCORE_BELOW"));
+                    "Invalid condition type. Supported: PRICE_ABOVE, PRICE_BELOW, SCORE_ABOVE, SCORE_BELOW (or CONVICTION_ABOVE, CONVICTION_BELOW)"));
         }
+        String condition = switch (rawCondition) {
+            case "CONVICTION_ABOVE" -> "SCORE_ABOVE";
+            case "CONVICTION_BELOW" -> "SCORE_BELOW";
+            default -> rawCondition;
+        };
 
         // 3. Threshold validation
         if (request.threshold() == null) {
@@ -119,6 +131,7 @@ public class AlertController {
         );
 
         AlertConfigEntity saved = alertRepository.save(entity);
+        alertExecutionService.invalidateCache(symbol);
         return ResponseEntity.ok(saved);
     }
 
@@ -127,8 +140,9 @@ public class AlertController {
         return alertRepository.findById(id)
                 .map(alert -> {
                     alert.setEnabled(!alert.isEnabled());
-                    alertRepository.save(alert);
-                    return ResponseEntity.ok(alert);
+                    AlertConfigEntity saved = alertRepository.save(alert);
+                    alertExecutionService.invalidateCache(saved.getSymbol());
+                    return ResponseEntity.ok(saved);
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -142,10 +156,12 @@ public class AlertController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteAlert(@PathVariable @NonNull Long id) {
-        if (!alertRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        alertRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
+        return alertRepository.findById(id)
+                .map(alert -> {
+                    alertRepository.deleteById(id);
+                    alertExecutionService.invalidateCache(alert.getSymbol());
+                    return ResponseEntity.noContent().build();
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }

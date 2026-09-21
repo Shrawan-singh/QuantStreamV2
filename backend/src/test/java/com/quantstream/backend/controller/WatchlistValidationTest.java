@@ -26,7 +26,7 @@ class WatchlistValidationTest {
     void setUp() {
         watchlistRepository = Mockito.mock(WatchlistRepository.class);
         analyticsEngine = Mockito.mock(AnalyticsEngine.class);
-        controller = new WatchlistController(watchlistRepository, analyticsEngine);
+        controller = new WatchlistController(watchlistRepository, analyticsEngine, "simulation");
     }
 
     @Test
@@ -57,7 +57,8 @@ class WatchlistValidationTest {
         assertTrue(response.getBody() instanceof Map);
         @SuppressWarnings("unchecked")
         Map<String, String> body = (Map<String, String>) response.getBody();
-        assertEquals("Instrument not found in the supported market universe.", body.get("error"));
+        assertTrue(body.get("error").contains("UNKNOWN_FAKE_SYM"));
+        assertTrue(body.get("error").contains("simulation"));
     }
 
     @Test

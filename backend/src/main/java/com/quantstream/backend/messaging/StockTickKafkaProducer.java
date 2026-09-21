@@ -4,6 +4,7 @@ import com.quantstream.backend.config.StreamingProperties;
 import com.quantstream.backend.domain.StockTick;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -11,7 +12,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Service
-public class StockTickKafkaProducer {
+@Profile("!local")
+public class StockTickKafkaProducer implements TickPublisher {
 
     private static final Logger logger = LoggerFactory.getLogger(StockTickKafkaProducer.class);
 
@@ -31,7 +33,7 @@ public class StockTickKafkaProducer {
             if (throwable != null) {
                 logger.error("Failed to publish tick to Kafka topic {}: {}", streamingProperties.getMarketTicksTopic(), tick, throwable);
             } else {
-                logger.info("Published tick to Kafka topic {} with key {}", streamingProperties.getMarketTicksTopic(), tick.symbol());
+                logger.debug("Published tick to Kafka topic {} with key {}", streamingProperties.getMarketTicksTopic(), tick.symbol());
             }
         });
     }

@@ -5,6 +5,7 @@ import com.quantstream.backend.domain.InstrumentRegistry;
 import com.quantstream.backend.domain.dto.AnalyticsSnapshot;
 import com.quantstream.backend.domain.entity.WatchlistItemEntity;
 import com.quantstream.backend.repository.WatchlistRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,10 +27,16 @@ public class WatchlistController {
 
     private final WatchlistRepository watchlistRepository;
     private final AnalyticsEngine analyticsEngine;
+    private final String marketMode;
 
-    public WatchlistController(WatchlistRepository watchlistRepository, AnalyticsEngine analyticsEngine) {
+    public WatchlistController(
+            WatchlistRepository watchlistRepository,
+            AnalyticsEngine analyticsEngine,
+            @Value("${quantstream.marketdata.mode:simulation}") String marketMode
+    ) {
         this.watchlistRepository = watchlistRepository;
         this.analyticsEngine = analyticsEngine;
+        this.marketMode = marketMode;
     }
 
     /**
@@ -70,9 +77,11 @@ public class WatchlistController {
 
         String symbol = request.symbol().trim().toUpperCase();
 
-        // Validate strictly against the supported instrument registry
-        if (!InstrumentRegistry.isSupported(symbol)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Instrument not found in the supported market universe."));
+        // Validate strictly against the active mode's instrument universe
+        if (!InstrumentRegistry.isSupportedInCurrentMode(symbol, marketMode)) {
+            String modeName = "live".equalsIgnoreCase(marketMode) ? "live (US equities)" : "simulation (NSE equities)";
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "Symbol '" + symbol + "' is not available in the current " + modeName + " mode universe."));
         }
 
         // Prevent duplicate entries

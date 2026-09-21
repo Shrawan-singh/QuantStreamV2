@@ -32,7 +32,7 @@ public class TickQueueService {
 
         while (accepting.get()) {
             if (queue.offer(tick, 1, TimeUnit.SECONDS)) {
-                logger.info("Queued tick {}. queueSize={}", tick.symbol(), queue.size());
+                logger.debug("Queued tick {}. queueSize={}", tick.symbol(), queue.size());
                 return;
             }
 

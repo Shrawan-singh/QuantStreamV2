@@ -35,6 +35,7 @@ public class AlertExecutionService {
     private final AlertConfigRepository alertConfigRepository;
     private final AlertTriggerHistoryRepository alertTriggerHistoryRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final java.util.concurrent.ConcurrentHashMap<String, java.util.List<AlertConfigEntity>> activeAlertsCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public AlertExecutionService(
             AlertConfigRepository alertConfigRepository,
@@ -44,6 +45,30 @@ public class AlertExecutionService {
         this.alertConfigRepository = alertConfigRepository;
         this.alertTriggerHistoryRepository = alertTriggerHistoryRepository;
         this.messagingTemplate = messagingTemplate;
+    }
+
+    /**
+     * Invalidates in-memory active alerts cache for a symbol or all symbols.
+     */
+    public void invalidateCache(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            activeAlertsCache.clear();
+        } else {
+            activeAlertsCache.remove(symbol.trim().toUpperCase());
+        }
+    }
+
+    private java.util.List<AlertConfigEntity> getActiveAlerts(String symbol) {
+        return activeAlertsCache.computeIfAbsent(symbol, sym -> {
+            try {
+                return new java.util.concurrent.CopyOnWriteArrayList<>(
+                        alertConfigRepository.findBySymbolAndEnabledTrueAndTriggeredFalse(sym)
+                );
+            } catch (Exception e) {
+                logger.warn("Failed to load active alerts from DB for symbol {}: {}", sym, e.getMessage());
+                return new java.util.concurrent.CopyOnWriteArrayList<>();
+            }
+        });
     }
 
     /**
@@ -60,7 +85,7 @@ public class AlertExecutionService {
         }
 
         String symbol = snapshot.symbol().toUpperCase();
-        List<AlertConfigEntity> activeAlerts = alertConfigRepository.findBySymbolAndEnabledTrueAndTriggeredFalse(symbol);
+        List<AlertConfigEntity> activeAlerts = getActiveAlerts(symbol);
         if (activeAlerts.isEmpty()) {
             return List.of();
         }
@@ -103,14 +128,20 @@ public class AlertExecutionService {
             }
 
             if (conditionMet && triggerValue != null) {
-                triggerValue = triggerValue.setScale(2, java.math.RoundingMode.HALF_UP);
                 Instant now = Instant.now();
+                synchronized (alert) {
+                    if (alert.isTriggered() || !alert.isEnabled()) {
+                        continue;
+                    }
+                    alert.setTriggered(true);
+                    alert.setTriggeredAt(now);
+                    alert.setTriggeredValue(triggerValue);
+                    alert.setEnabled(false);
+                }
+                activeAlerts.remove(alert);
+                triggerValue = triggerValue.setScale(2, java.math.RoundingMode.HALF_UP);
 
-                // 1. One-shot state transition: set TRIGGERED and disarm further firing
-                alert.setTriggered(true);
-                alert.setTriggeredAt(now);
-                alert.setTriggeredValue(triggerValue);
-                alert.setEnabled(false);
+                // 1. One-shot state transition persisted
                 alertConfigRepository.save(alert);
 
                 // 2. Persist trigger history record
@@ -171,7 +202,9 @@ public class AlertExecutionService {
             alert.setTriggeredAt(null);
             alert.setTriggeredValue(null);
             alert.setEnabled(true);
-            return alertConfigRepository.save(alert);
+            AlertConfigEntity saved = alertConfigRepository.save(alert);
+            invalidateCache(saved.getSymbol());
+            return saved;
         });
     }
 }
