@@ -54,6 +54,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-quantstream}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-quantstream}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: quantstream-kafka:29092
+      MARKET_DATA_MODE: ${MARKET_DATA_MODE:-simulation}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      LIVE_SYMBOLS: ${LIVE_SYMBOLS:-}
       SIMULATION_AUTO_START: "true"
       SERVER_PORT: "8080"
     depends_on:
