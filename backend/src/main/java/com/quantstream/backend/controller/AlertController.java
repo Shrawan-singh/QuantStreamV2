@@ -1,3 +1,27 @@
+/*
+ * ==================================================================================
+ * FILE: AlertController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for managing User Price & Conviction Alerts.
+ *
+ * It allows the frontend to:
+ *   1. View existing alert rules (`GET /api/alerts`)
+ *   2. Create new alert rules (`POST /api/alerts`)
+ *   3. Toggle rules on/off (`PUT /api/alerts/{id}/toggle`)
+ *   4. Re-arm triggered alerts (`PUT /api/alerts/{id}/reset`)
+ *   5. Delete alerts (`DELETE /api/alerts/{id}`)
+ *   6. View past trigger history (`GET /api/alerts/history`)
+ *
+ * INPUT VALIDATION RULES ENFORCED:
+ * - Symbol must exist in the currently active universe (simulation vs live).
+ * - Threshold must be positive (e.g. price > 0).
+ * - Conviction score thresholds must be within 0.0 to 100.0.
+ * - Duplicates are rejected: user cannot create two identical active alerts.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.domain.InstrumentRegistry;
@@ -27,6 +51,7 @@ import java.util.Set;
 @RequestMapping("/api/alerts")
 public class AlertController {
 
+    // Valid supported condition types
     private static final Set<String> SUPPORTED_CONDITIONS = Set.of(
             "PRICE_ABOVE", "PRICE_BELOW", "SCORE_ABOVE", "SCORE_BELOW",
             "CONVICTION_ABOVE", "CONVICTION_BELOW"
@@ -49,21 +74,36 @@ public class AlertController {
         this.marketMode = marketMode;
     }
 
+    /**
+     * Returns all configured alert rules in the database.
+     * Route: GET /api/alerts
+     */
     @GetMapping
     public ResponseEntity<List<AlertConfigEntity>> getAllAlerts() {
         return ResponseEntity.ok(alertRepository.findAll());
     }
 
+    /**
+     * Returns trigger history for a specific alert.
+     * Route: GET /api/alerts/{id}/history
+     */
     @GetMapping("/{id}/history")
     public ResponseEntity<List<AlertTriggerHistoryEntity>> getAlertHistory(@PathVariable @NonNull Long id) {
         return ResponseEntity.ok(historyRepository.findByAlertIdOrderByTriggeredAtDesc(id));
     }
 
+    /**
+     * Returns the 50 most recent alert triggers across all stocks.
+     * Route: GET /api/alerts/history
+     */
     @GetMapping("/history")
     public ResponseEntity<List<AlertTriggerHistoryEntity>> getRecentHistory() {
         return ResponseEntity.ok(historyRepository.findTop50ByOrderByTriggeredAtDesc());
     }
 
+    /**
+     * Request payload sent by frontend when creating a new alert.
+     */
     public record CreateAlertRequest(
             String symbol,
             String conditionType,
@@ -71,13 +111,17 @@ public class AlertController {
             Boolean enabled
     ) {}
 
+    /**
+     * Creates a new alert rule with strict validation.
+     * Route: POST /api/alerts
+     */
     @PostMapping
     public ResponseEntity<?> createAlert(@RequestBody CreateAlertRequest request) {
         if (request == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Request body is required"));
         }
 
-        // 1. Symbol validation
+        // 1. Symbol validation: Stock must be valid in the active market mode
         if (request.symbol() == null || request.symbol().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Symbol is required"));
         }
@@ -88,7 +132,7 @@ public class AlertController {
                     "Symbol '" + symbol + "' is not available in the current " + modeName + " mode universe."));
         }
 
-        // 2. Condition Type validation & normalization
+        // 2. Condition Type validation & normalization (e.g. CONVICTION_ABOVE -> SCORE_ABOVE)
         if (request.conditionType() == null || request.conditionType().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "conditionType is required"));
         }
@@ -103,7 +147,7 @@ public class AlertController {
             default -> rawCondition;
         };
 
-        // 3. Threshold validation
+        // 3. Threshold validation (must be positive number; scores must be 0-100)
         if (request.threshold() == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Numeric threshold is required"));
         }
@@ -117,12 +161,13 @@ public class AlertController {
             }
         }
 
-        // 4. Duplicate prevention
+        // 4. Prevent duplicate identical rules
         if (alertRepository.existsBySymbolAndConditionTypeAndThreshold(symbol, condition, request.threshold())) {
             return ResponseEntity.badRequest().body(Map.of("error",
                     "An identical alert already exists for this instrument, condition, and threshold."));
         }
 
+        // 5. Save entity and invalidate memory cache so the stream picks up the new rule immediately
         AlertConfigEntity entity = new AlertConfigEntity(
                 symbol,
                 condition,
@@ -135,6 +180,10 @@ public class AlertController {
         return ResponseEntity.ok(saved);
     }
 
+    /**
+     * Toggles an alert between enabled and disabled.
+     * Route: PUT /api/alerts/{id}/toggle
+     */
     @PutMapping("/{id}/toggle")
     public ResponseEntity<?> toggleAlert(@PathVariable @NonNull Long id) {
         return alertRepository.findById(id)
@@ -147,6 +196,10 @@ public class AlertController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Resets a triggered alert back to active (re-arm).
+     * Route: PUT /api/alerts/{id}/reset
+     */
     @PutMapping("/{id}/reset")
     public ResponseEntity<?> resetAlert(@PathVariable @NonNull Long id) {
         return alertExecutionService.resetAlert(id)
@@ -154,6 +207,10 @@ public class AlertController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Deletes an alert rule from the database.
+     * Route: DELETE /api/alerts/{id}
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteAlert(@PathVariable @NonNull Long id) {
         return alertRepository.findById(id)

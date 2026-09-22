@@ -1,3 +1,24 @@
+/*
+ * ==================================================================================
+ * FILE: InstrumentController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for querying the master stock directory.
+ *
+ * ENDPOINTS PROVIDED:
+ * - `GET /api/instruments`:
+ *   Returns all registered stocks across both universes.
+ * - `GET /api/instruments/active`:
+ *   Returns only stocks for the CURRENT mode (e.g. 50 US stocks if in live mode;
+ *   ~240 Indian stocks if in simulation mode).
+ * - `GET /api/instruments/curated`:
+ *   Returns a hand-picked subset of famous bellwether stocks for the dashboard homepage.
+ * - `GET /api/instruments/{symbol}`:
+ *   Looks up detailed metadata (company name, sector, exchange, currency) for a single ticker.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.domain.Instrument;
@@ -23,6 +44,7 @@ public class InstrumentController {
 
     /**
      * Returns all supported instruments (both NSE simulation equities and US live equities).
+     * Route: GET /api/instruments
      */
     @GetMapping
     public ResponseEntity<List<Instrument>> getAllInstruments() {
@@ -31,6 +53,7 @@ public class InstrumentController {
 
     /**
      * Returns only the instruments belonging to the currently active market mode.
+     * Route: GET /api/instruments/active
      */
     @GetMapping("/active")
     public ResponseEntity<List<Instrument>> getActiveInstruments() {
@@ -38,7 +61,8 @@ public class InstrumentController {
     }
 
     /**
-     * Returns the simulation universe instruments.
+     * Returns the simulation universe instruments (~240 NSE equities).
+     * Route: GET /api/instruments/simulation
      */
     @GetMapping("/simulation")
     public ResponseEntity<List<Instrument>> getSimulationInstruments() {
@@ -47,6 +71,7 @@ public class InstrumentController {
 
     /**
      * Returns the curated subset of bellwether instruments for the dashboard overview.
+     * Route: GET /api/instruments/curated
      */
     @GetMapping("/curated")
     public ResponseEntity<List<Instrument>> getCuratedInstruments() {
@@ -54,7 +79,8 @@ public class InstrumentController {
     }
 
     /**
-     * Looks up an instrument by symbol.
+     * Looks up an instrument by symbol (e.g. /api/instruments/AAPL).
+     * Route: GET /api/instruments/{symbol}
      */
     @GetMapping("/{symbol}")
     public ResponseEntity<Instrument> getInstrument(@PathVariable String symbol) {

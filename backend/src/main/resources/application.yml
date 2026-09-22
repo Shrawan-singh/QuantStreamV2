@@ -1,23 +1,45 @@
+# ==================================================================================
+# APPLICATION CONFIGURATION (DEFAULT / PRODUCTION PROFILE)
+# ==================================================================================
+#
+# HOW THIS FILE WORKS:
+# This is the master configuration file for the Spring Boot backend.
+# In YAML, syntax like `${VARIABLE_NAME:defaultValue}` means:
+#   "Look for an operating system environment variable named VARIABLE_NAME.
+#    If it exists, use its value. If it is NOT set, use the defaultValue after the colon!"
+#
+# This allows the exact same code to run in Docker, Kubernetes, AWS, or locally
+# simply by passing different environment variables without modifying code!
+# ==================================================================================
+
 spring:
   application:
     name: quantstream-backend
+
+  # Database Connection (PostgreSQL)
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/quantstream}
     username: ${SPRING_DATASOURCE_USERNAME:quantstream}
     password: ${SPRING_DATASOURCE_PASSWORD:quantstream}
     driver-class-name: org.postgresql.Driver
+
+  # JPA & Hibernate ORM Settings
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: none # Migrations are managed by Flyway SQL scripts, not Hibernate
     open-in-view: false
+
+  # Apache Kafka Distributed Message Broker Settings
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
       auto-offset-reset: earliest
+
   main:
     banner-mode: console
 
+# Actuator Health Check Endpoints (for Docker/Kubernetes health probes)
 management:
   endpoints:
     web:
@@ -28,28 +50,41 @@ management:
       probes:
         enabled: true
 
+# HTTP Web Server Port
 server:
   port: ${SERVER_PORT:8080}
 
+# ==================================================================================
+# QUANTSTREAM CUSTOM DOMAIN PROPERTIES
+# ==================================================================================
 quantstream:
+  # Market Data Configuration:
+  # - mode: "simulation" (synthetic NSE stocks) or "live" (real-time US stocks via Finnhub)
+  # - api-key: Finnhub API key (free tier available at https://finnhub.io)
   marketdata:
     mode: ${MARKET_DATA_MODE:simulation}
     provider: ${MARKET_DATA_PROVIDER:finnhub}
     api-key: ${FINNHUB_API_KEY:}
     websocket-url: ${FINNHUB_WEBSOCKET_URL:wss://ws.finnhub.io}
-    symbols: ${LIVE_SYMBOLS:}
+    symbols: ${LIVE_SYMBOLS:} # Leave blank to stream all 50 registered liquid US equities
+
+  # Simulation Generator Settings (Active when mode=simulation)
   simulation:
     auto-start: ${SIMULATION_AUTO_START:true}
-    seed: ${SIMULATION_SEED:20260902}
-    interval-ms: ${SIMULATION_INTERVAL_MS:500}
-    symbols: ${SIMULATION_SYMBOLS:}
-    streaming:
+    seed: ${SIMULATION_SEED:20260902} # Seed for reproducible random numbers
+    interval-ms: ${SIMULATION_INTERVAL_MS:500} # Emit new ticks every 500ms
+    symbols: ${SIMULATION_SYMBOLS:} # Leave blank for all ~240 NSE equities
+
+  # Streaming Pipeline & Thread Concurrency Settings
+  streaming:
     market-ticks-topic: ${KAFKA_TOPIC_MARKET_TICKS:market-ticks}
     consumer-group-id: ${KAFKA_CONSUMER_GROUP_ID:quantstream-processing}
-    queue-size: ${QUEUE_SIZE:1000}
-    worker-pool-size: ${WORKER_POOL_SIZE:4}
+    queue-size: ${QUEUE_SIZE:1000} # Max ticks waiting in buffer queue
+    worker-pool-size: ${WORKER_POOL_SIZE:4} # Number of worker threads
     worker-poll-timeout-ms: ${WORKER_POLL_TIMEOUT_MS:500}
     shutdown-timeout-ms: ${WORKER_SHUTDOWN_TIMEOUT_MS:5000}
+
+  # Quantitative Indicator Parameters
   indicators:
     sma-period: ${INDICATOR_SMA_PERIOD:20}
     ema-period: ${INDICATOR_EMA_PERIOD:20}
@@ -62,16 +97,17 @@ quantstream:
     volume-lookback: ${INDICATOR_VOLUME_LOOKBACK:20}
     volume-positive-threshold: ${INDICATOR_VOLUME_POSITIVE:1.5}
     volume-negative-threshold: ${INDICATOR_VOLUME_NEGATIVE:0.7}
+
+  # Conviction Score Mathematical Weights & Statistical Knobs
   scoring:
-    trend-weight: ${SCORING_TREND_WEIGHT:25.0}
-    momentum-weight: ${SCORING_MOMENTUM_WEIGHT:25.0}
-    rsi-weight: ${SCORING_RSI_WEIGHT:25.0}
-    volume-weight: ${SCORING_VOLUME_WEIGHT:25.0}
+    trend-weight: ${SCORING_TREND_WEIGHT:25.0} # 25%
+    momentum-weight: ${SCORING_MOMENTUM_WEIGHT:25.0} # 25%
+    rsi-weight: ${SCORING_RSI_WEIGHT:25.0} # 25%
+    volume-weight: ${SCORING_VOLUME_WEIGHT:25.0} # 25%
     volatility-lookback: ${SCORING_VOLATILITY_LOOKBACK:20}
     min-volatility-lookback: ${SCORING_MIN_VOLATILITY_LOOKBACK:5}
     z-score-cap: ${SCORING_Z_SCORE_CAP:3.0}
     ema-confirmation-bonus: ${SCORING_EMA_CONFIRMATION_BONUS:4.0}
     ema-divergence-penalty: ${SCORING_EMA_DIVERGENCE_PENALTY:3.0}
-    smoothing-alpha: ${SCORING_SMOOTHING_ALPHA:0.20}
-    hysteresis-band: ${SCORING_HYSTERESIS_BAND:1.5}
-
+    smoothing-alpha: ${SCORING_SMOOTHING_ALPHA:0.20} # 20% smoothing factor
+    hysteresis-band: ${SCORING_HYSTERESIS_BAND:1.5} # Anti-flicker buffer

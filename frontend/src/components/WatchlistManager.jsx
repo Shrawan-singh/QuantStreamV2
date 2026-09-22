@@ -1,18 +1,50 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Watchlist Manager Component (frontend/src/components/WatchlistManager.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * Traders don't want to dig through 200 stocks every day. They want a personalized
+ * "Favorites" list — a Watchlist!
+ *
+ * KEY FEATURES:
+ * 1. PERSISTENT IN DATABASE:
+ *    When you add a stock to your watchlist (e.g., Apple or Reliance), it gets saved
+ *    into our PostgreSQL database table (`watchlist_items`). If you close your browser
+ *    and come back next week, your watchlist is still there!
+ * 2. LIVE AUTOCOMPLETE SUGGESTIONS:
+ *    As you type in the "Add Stock" box, it searches our active market universe
+ *    and shows matching tickers and company names so you don't have to guess spelling.
+ * 3. PERSONAL TRADING NOTES:
+ *    You can attach a note to any stock (e.g., "Wait for pullback to 20-period SMA").
+ * 4. LIVE METRICS & 1-CLICK DRILLDOWN:
+ *    Each card in the watchlist shows the stock's current price, daily % change,
+ *    and Conviction Score. Clicking the card opens its full interactive chart!
+ * ==============================================================================
+ */
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bookmark, Plus, Trash2, ExternalLink, Search, Check, AlertCircle } from 'lucide-react';
 import { currencySymbol } from '../lib/marketUtils';
 
 export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarketData, marketConfig }) {
+  // Array of saved watchlist items loaded from the database: [ { id, symbol, notes, createdAt }, ... ]
   const [items, setItems] = useState([]);
+  // Full list of valid stocks supported by the backend (used for autocomplete)
   const [supportedInstruments, setSupportedInstruments] = useState([]);
+  // Loading spinner state while calling the database
   const [loading, setLoading] = useState(false);
+  // Input fields for adding a new stock
   const [symbolInput, setSymbolInput] = useState('');
   const [notesInput, setNotesInput] = useState('');
+  // Error message banner if validation fails (e.g., "Instrument not found")
   const [errorMsg, setErrorMsg] = useState(null);
+  // Autocomplete dropdown visibility
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+
 
   const endpoint = apiBase || 'http://localhost:8080';
 

@@ -1,26 +1,75 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Real-Time WebSocket Hook (frontend/src/lib/useQuantStreamWebSocket.js)
+ * ==============================================================================
+ *
+ * WHAT IS THIS FILE FOR? (Plain English):
+ * Imagine a high-speed stock trading floor. Instead of having to press "Refresh"
+ * (F5) on your browser every second to see new prices, this file opens a direct,
+ * permanent telephone line (a "WebSocket") between your web browser and the
+ * Spring Boot backend server.
+ *
+ * Whenever a stock price changes on the server:
+ * 1. The server blasts the new price down this open phone line.
+ * 2. This hook catches it instantly.
+ * 3. It checks: "Did the price go up or down since the last tick?"
+ *    - If up: marks it green ('up') so the UI can flash green.
+ *    - If down: marks it red ('down') so the UI can flash red.
+ * 4. It notifies React, which smoothly updates the charts, tables, and gauges.
+ *
+ * WHAT IS A CUSTOM REACT HOOK?
+ * In React, functions starting with `use...` are called "Hooks".
+ * This hook packages all the complex networking, reconnecting, and error-handling
+ * into one neat package so any visual component can simply call:
+ *   const { marketData, connectionStatus } = useQuantStreamWebSocket();
+ * ==============================================================================
+ */
+
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
+// The URL of our Spring Boot backend REST & WebSocket server.
+// Reads from environment variables (for Docker/production) or defaults to localhost:8080.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const WS_ENDPOINT = `${API_BASE}/ws`;
 
 export function useQuantStreamWebSocket() {
+  // --- REACT STATE VARIABLES (Things that make the UI re-render when they change) ---
+  
+  // A dictionary/map of all stocks: { "AAPL": { price: 182.5, sma20: 180.1, ... }, "NVDA": { ... } }
   const [marketData, setMarketData] = useState({});
-  const [connectionStatus, setConnectionStatus] = useState('CONNECTING'); // CONNECTED, CONNECTING, DISCONNECTED
+  
+  // Connection status indicator: 'CONNECTING', 'CONNECTED', or 'DISCONNECTED'
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
+  
+  // Timestamp of the very last price tick received (for showing "Last tick: 2s ago")
   const [lastTickTime, setLastTickTime] = useState(null);
+  
+  // Total counter of all ticks processed since the page was opened
   const [totalTicksReceived, setTotalTicksReceived] = useState(0);
+  
+  // Market mode: 'simulation' (NSE Indian equities) or 'live' (Finnhub US equities)
   const [marketConfig, setMarketConfig] = useState({
     mode: 'simulation',
     provider: 'finnhub',
     status: 'ACTIVE'
   });
+  
+  // The most recent trading alert event (e.g., "RSI Overbought on RELIANCE")
   const [latestAlertEvent, setLatestAlertEvent] = useState(null);
+
+  // --- REFS (Variables that store data without triggering screen re-renders) ---
   const clientRef = useRef(null);
+  // Keeps track of the last known price for each symbol so we can calculate up/down flash
   const lastPricesRef = useRef({});
 
+  /**
+   * Processes a single stock price snapshot received from the server.
+   * Compares the new price against the old price to determine whether to flash GREEN or RED.
+   */
   const handleIncomingSnapshot = useCallback((snapshot) => {
     if (!snapshot || !snapshot.symbol) return;
 
@@ -28,15 +77,18 @@ export function useQuantStreamWebSocket() {
     const prevPrice = lastPricesRef.current[sym];
     let tickDirection = 'none';
 
+    // Check price movement for visual UI flash animation
     if (prevPrice !== undefined && snapshot.price !== undefined) {
       if (Number(snapshot.price) > Number(prevPrice)) {
-        tickDirection = 'up';
+        tickDirection = 'up';   // Price rose -> flash green
       } else if (Number(snapshot.price) < Number(prevPrice)) {
-        tickDirection = 'down';
+        tickDirection = 'down'; // Price fell -> flash red
       }
     }
+    // Remember this price as the new baseline for next time
     lastPricesRef.current[sym] = snapshot.price;
 
+    // Merge this updated stock into our global marketData dictionary
     setMarketData((prev) => ({
       ...prev,
       [sym]: {
@@ -50,7 +102,13 @@ export function useQuantStreamWebSocket() {
     setTotalTicksReceived((c) => c + 1);
   }, []);
 
-  // Initial fetch via REST to populate immediately before first WS tick, plus config check
+  /**
+   * STEP 1: INITIAL DATA HYDRATION (REST API)
+   * Before WebSocket finishes connecting, we make a quick HTTP GET request to:
+   * 1. `/api/stocks`: Immediately fetch current prices so the dashboard isn't blank!
+   * 2. `/api/config`: Discover whether we are in Live or Simulation mode.
+   * 3. Set up a periodic health check every 10 seconds.
+   */
   useEffect(() => {
     let mounted = true;
     async function fetchInitialData() {
@@ -114,27 +172,40 @@ export function useQuantStreamWebSocket() {
     };
   }, []);
 
-  // STOMP WebSocket Connection
+  /**
+   * STEP 2: STOMP OVER SOCKJS WEBSOCKET CONNECTION
+   * Connects to `/ws` on the backend and subscribes to real-time broadcast channels:
+   * - `/topic/market/all`: Stream of live ticks and calculated indicators
+   * - `/topic/alerts`: Live notifications when user alert thresholds are crossed
+   *
+   * FALLBACK POLLING SAFETY NET:
+   * If the WebSocket connection ever drops (e.g., poor WiFi, server restart),
+   * this code automatically falls back to polling `/api/stocks` every 2 seconds
+   * so the user's trading screen never freezes!
+   */
   useEffect(() => {
     let client = null;
     let fallbackInterval = null;
 
     try {
       client = new Client({
+        // SockJS provides fallback compatibility if native WebSocket is blocked
         webSocketFactory: () => new SockJS(WS_ENDPOINT),
-        reconnectDelay: 3000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
+        reconnectDelay: 3000,      // Try to reconnect every 3 seconds if disconnected
+        heartbeatIncoming: 4000,   // Expect heartbeat ping from server every 4 seconds
+        heartbeatOutgoing: 4000,   // Send heartbeat ping to server every 4 seconds
         debug: (str) => {
-          // logger debug if needed
+          // Debug logs can be enabled here if troubleshooting network traffic
         },
         onConnect: () => {
           setConnectionStatus('CONNECTED');
+          // If fallback polling was running, shut it down now that live WS is back!
           if (fallbackInterval) {
             clearInterval(fallbackInterval);
             fallbackInterval = null;
           }
 
+          // Subscribe to live market ticks
           client.subscribe('/topic/market/all', (message) => {
             try {
               const snapshot = JSON.parse(message.body);
@@ -144,6 +215,7 @@ export function useQuantStreamWebSocket() {
             }
           });
 
+          // Subscribe to live trade alerts
           client.subscribe('/topic/alerts', (message) => {
             try {
               const alertNotif = JSON.parse(message.body);
@@ -162,7 +234,7 @@ export function useQuantStreamWebSocket() {
         },
         onWebSocketClose: () => {
           setConnectionStatus('DISCONNECTED');
-          // Start fallback polling if disconnected
+          // Start fallback polling if WebSocket closes unexpectedly
           if (!fallbackInterval) {
             fallbackInterval = setInterval(async () => {
               try {
@@ -186,6 +258,7 @@ export function useQuantStreamWebSocket() {
       setConnectionStatus('DISCONNECTED');
     }
 
+    // CLEANUP FUNCTION: Cleanly close connection when user leaves the page
     return () => {
       if (client) {
         client.deactivate();
@@ -196,6 +269,7 @@ export function useQuantStreamWebSocket() {
     };
   }, [handleIncomingSnapshot]);
 
+  // Expose these state values to whatever React component calls this hook!
   return {
     marketData,
     connectionStatus,
@@ -206,3 +280,4 @@ export function useQuantStreamWebSocket() {
     apiBase: API_BASE,
   };
 }
+

@@ -1,8 +1,34 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Application Sidebar Navigation (frontend/src/components/Sidebar.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * This is the left-hand navigation column you see on desktop screens (or slide-out
+ * drawer on mobile phones).
+ *
+ * It contains:
+ * 1. THE LOGO & BRAND:
+ *    Clicking "QUANTSTREAM" always takes you back home to the main Dashboard.
+ * 2. NAVIGATION BUTTONS:
+ *    - Dashboard (High-level pulse of the market)
+ *    - Scanner (High-speed table of all stocks)
+ *    - Stock Detail (Deep-dive into indicators & technical math)
+ *    - Watchlist (Your customized favorites)
+ *    - Alerts (Automated price & RSI notifications)
+ *    - Engine Health (Low-level Kafka, queue, and worker thread metrics)
+ * 3. LIVE FOOTER TELEMETRY:
+ *    Displays whether the browser is connected to the backend (ONLINE/OFFLINE),
+ *    which market mode is active, and how many ticks have been ingested.
+ * ==============================================================================
+ */
+
 import React from 'react';
 import { Activity } from 'lucide-react';
 
+// The navigation menu structure organized into logical categories
 const NAV_SECTIONS = [
   {
     label: 'Intelligence Platform',
@@ -21,6 +47,7 @@ const NAV_SECTIONS = [
     ],
   },
 ];
+
 
 export default function Sidebar({
   activeTab,

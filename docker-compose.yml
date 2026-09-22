@@ -1,4 +1,29 @@
+# ==================================================================================
+# DOCKER COMPOSE CONFIGURATION: docker-compose.yml
+# ==================================================================================
+#
+# WHAT IS DOCKER COMPOSE?
+# Instead of manually downloading, installing, and configuring Kafka, PostgreSQL,
+# Java, and Node.js on your computer, Docker Compose lets you spin up the entire
+# 4-tier QuantStream system with a SINGLE command:
+#   docker-compose up --build
+#
+# THE 4 CONTAINERS RUNNING TOGETHER:
+# 1. `kafka`:
+#    Apache Kafka 3.8.0 running in modern KRaft mode (no legacy ZooKeeper required!).
+#    Listens on port 9092.
+# 2. `postgres`:
+#    PostgreSQL 16 relational database. Stores alert configs, watchlists, and history.
+#    Uses a persistent volume so data isn't lost when containers stop.
+# 3. `backend`:
+#    The Java Spring Boot backend server.
+#    Automatically waits until Kafka and PostgreSQL are healthy before starting up!
+# 4. `frontend`:
+#    The Next.js React user interface. Runs on http://localhost:3000.
+# ==================================================================================
+
 services:
+  # Container 1: Apache Kafka Distributed Event Streaming Broker
   kafka:
     image: apache/kafka:3.8.0
     container_name: quantstream-kafka
@@ -24,6 +49,7 @@ services:
       retries: 5
       start_period: 10s
 
+  # Container 2: PostgreSQL Relational Database
   postgres:
     image: postgres:16-alpine
     container_name: quantstream-postgres
@@ -40,8 +66,9 @@ services:
       retries: 5
       start_period: 5s
     volumes:
-      - quantstream-postgres-data:/var/lib/postgresql/data
+      - quantstream-postgres-data:/var/lib/postgresql/data # Persist data on disk
 
+  # Container 3: Spring Boot Java Backend
   backend:
     build:
       context: ./backend
@@ -54,17 +81,18 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-quantstream}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-quantstream}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: quantstream-kafka:29092
-      MARKET_DATA_MODE: ${MARKET_DATA_MODE:-simulation}
+      MARKET_DATA_MODE: ${MARKET_DATA_MODE:-simulation} # "simulation" or "live"
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       LIVE_SYMBOLS: ${LIVE_SYMBOLS:-}
       SIMULATION_AUTO_START: "true"
       SERVER_PORT: "8080"
     depends_on:
       kafka:
-        condition: service_healthy
+        condition: service_healthy # Wait until Kafka is ready
       postgres:
-        condition: service_healthy
+        condition: service_healthy # Wait until PostgreSQL is ready
 
+  # Container 4: Next.js Frontend Dashboard UI
   frontend:
     build:
       context: ./frontend
@@ -79,5 +107,6 @@ services:
     depends_on:
       - backend
 
+# Persistent storage volume for PostgreSQL data
 volumes:
   quantstream-postgres-data:

@@ -1,3 +1,34 @@
+/*
+ * ==================================================================================
+ * FILE: RsiIndicator.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Calculates the "Relative Strength Index" (RSI), originally developed by J. Welles Wilder.
+ *
+ * WHAT DOES RSI ACTUALLY MEASURE?
+ * RSI measures the SPEED and CHANGE of price movements on a scale from 0 to 100.
+ * Think of it like a speedometer for stock price action:
+ *   - On days/ticks when the price went UP: how big were the gains?
+ *   - On days/ticks when the price went DOWN: how big were the losses?
+ *
+ * It compares average gains against average losses:
+ *   RS (Relative Strength) = Average Gain / Average Loss
+ *   RSI = 100 - (100 / (1 + RS))
+ *
+ * WHAT THE NUMBERS MEAN:
+ * - 0 to 100 scale:
+ *   - RSI > 60: Bulls are in control, price has been climbing strongly (POSITIVE signal).
+ *   - RSI between 40 and 60: Balanced / Normal chop (NEUTRAL signal).
+ *   - RSI < 40: Bears are in control, price has been tumbling (NEGATIVE signal).
+ *   - (In traditional trading, RSI > 70 is often considered "overbought" and RSI < 30 "oversold").
+ *
+ * WARM-UP REQUIREMENT:
+ * To calculate 14 price changes (deltas), we need at least 15 prices (period + 1).
+ * If we have fewer than 15, we return "IndicatorResult.notReady()".
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.indicator;
 
 import com.quantstream.backend.analytics.state.MarketState;
@@ -30,9 +61,9 @@ import java.util.List;
 public class RsiIndicator implements QuantitativeIndicator {
 
     public static final String NAME = "RSI";
-    private final int period;
-    private final double positiveThreshold;
-    private final double negativeThreshold;
+    private final int period;                    // Typically 14
+    private final double positiveThreshold;      // Default: 60.0
+    private final double negativeThreshold;      // Default: 40.0
 
     @org.springframework.beans.factory.annotation.Autowired
     public RsiIndicator(IndicatorProperties properties) {
@@ -68,12 +99,12 @@ public class RsiIndicator implements QuantitativeIndicator {
         }
 
         List<BigDecimal> prices = snapshot.recentPrices();
-        // Requires at least period + 1 prices to form 'period' delta transitions
+        // Requires at least period + 1 prices to form 'period' delta transitions (e.g. 15 prices for 14 deltas)
         if (prices.size() < period + 1) {
             return IndicatorResult.notReady();
         }
 
-        // Calculate initial period gains and losses
+        // Step 1: Calculate initial period gains and losses
         double sumGain = 0.0;
         double sumLoss = 0.0;
         for (int i = 1; i <= period; i++) {
@@ -88,7 +119,8 @@ public class RsiIndicator implements QuantitativeIndicator {
         double avgGain = sumGain / period;
         double avgLoss = sumLoss / period;
 
-        // Apply Wilder's smoothing for any remaining price deltas
+        // Step 2: Apply Wilder's smoothing technique for any subsequent prices beyond the initial period
+        // Wilder's smoothing formula: NewAvg = ((OldAvg * (N - 1)) + CurrentValue) / N
         for (int i = period + 1; i < prices.size(); i++) {
             double delta = prices.get(i).doubleValue() - prices.get(i - 1).doubleValue();
             double gain = delta > 0 ? delta : 0.0;
@@ -98,21 +130,24 @@ public class RsiIndicator implements QuantitativeIndicator {
             avgLoss = ((avgLoss * (period - 1)) + loss) / period;
         }
 
+        // Step 3: Compute RS and RSI
         double rsi;
         if (avgLoss == 0.0) {
+            // If the stock only went up and never had any loss, RSI is 100 (max possible)
             rsi = (avgGain == 0.0) ? 50.0 : 100.0;
         } else {
             double rs = avgGain / avgLoss;
             rsi = 100.0 - (100.0 / (1.0 + rs));
         }
 
+        // Step 4: Map RSI number to traffic-light Signal
         Signal signal;
         if (rsi > positiveThreshold) {
-            signal = Signal.POSITIVE;
+            signal = Signal.POSITIVE; // > 60: Bullish
         } else if (rsi < negativeThreshold) {
-            signal = Signal.NEGATIVE;
+            signal = Signal.NEGATIVE; // < 40: Bearish
         } else {
-            signal = Signal.NEUTRAL;
+            signal = Signal.NEUTRAL;  // 40 - 60: In-between
         }
 
         return new IndicatorResult(roundTwoDecimals(rsi), signal, true);

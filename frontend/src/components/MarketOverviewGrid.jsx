@@ -1,10 +1,40 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Market Overview Grid (frontend/src/components/MarketOverviewGrid.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * When you first visit the QuantStream dashboard, this component displays a neat,
+ * responsive grid of interactive cards representing the top market leaders
+ * (or stocks from your personal watchlist).
+ *
+ * KEY FEATURES ON EACH CARD:
+ * 1. LIVE FLASH ANIMATIONS:
+ *    When a new price tick arrives from the server, the entire card subtly flashes
+ *    emerald green if the price rose, or crimson red if the price dropped!
+ * 2. SYMBOL & BADGES:
+ *    Shows the ticker symbol (e.g., 'AAPL'), exchange tag ('US' or 'NSE'),
+ *    and the full company name (e.g., 'Apple Inc.').
+ * 3. REAL-TIME PRICE & CHANGE:
+ *    Current trading price and today's percentage change (+2.4% with an up arrow).
+ * 4. CONVICTION SCORE BAR:
+ *    A miniature horizontal progress bar colored by conviction tier
+ *    (Green for Very Strong, Cyan for Strong, Orange for Weak, Red for Very Weak).
+ * 5. CLICK INTERACTIONS:
+ *    - Single Click: Selects this stock as the active "Spotlight" stock on the dashboard.
+ *    - Double Click (or clicking the small arrow icon): Jumps straight into the full
+ *      Stock Detail view.
+ * ==============================================================================
+ */
+
 import React from 'react';
 import { TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import { currencySymbol, exchangeTag } from '../lib/marketUtils';
 
 export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSymbol, onDrillDown }) {
+  // If the server is still starting up or loading data, display skeleton placeholder boxes
   if (stocks.length === 0) {
     return (
       <div className="terminal-panel p-xl text-center text-muted">
@@ -17,6 +47,7 @@ export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSym
       </div>
     );
   }
+
 
   return (
     <div className="grid-auto grid-auto-fill-sm">

@@ -1,3 +1,41 @@
+/*
+ * ==================================================================================
+ * FILE: MarketState.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the IN-MEMORY NOTEBOOK for a SINGLE stock (e.g. just for "AAPL").
+ *
+ * Think of it as a live chalkboard that constantly updates as new trade ticks arrive:
+ *   - "What was the latest price?" -> latestPrice
+ *   - "What was the opening price today?" -> openPrice
+ *   - "What was the highest price reached?" -> highPrice
+ *   - "What was the lowest price?" -> lowPrice
+ *   - "How many total shares traded today?" -> cumulativeVolume
+ *   - "What were the last 100 prices that happened?" -> recentPrices (a rolling list)
+ *
+ * THE ROLLING WINDOW (SLIDING QUEUE):
+ * We don't want to keep a billion prices in memory until the computer crashes.
+ * Instead, we keep a bounded window of the last 100 prices (maxWindowSize).
+ * When price #101 arrives, the oldest price (#1) is removed ("evicted") from the front!
+ *
+ * O(1) FAST MATH TRICK (Rolling Sums):
+ * Instead of looping through all 100 prices every single millisecond to compute averages:
+ *   new_sum = old_sum - evicted_oldest_price + new_incoming_price
+ * That takes 1 tiny CPU instruction instead of 100!
+ *
+ * THREAD SAFETY (SYNCHRONIZED):
+ * Multiple background threads might receive ticks for the same stock at the same microsecond.
+ * The "synchronized" keyword acts like a lock on a restroom door: only one thread can enter
+ * and update this stock's chalkboard at a time, preventing race conditions or corrupted numbers.
+ *
+ * IMMUTABLE SNAPSHOT:
+ * After updating the chalkboard, it creates a frozen "Snapshot" copy and hands it to the
+ * indicators. That way, the indicators can take their time doing math without worrying
+ * that the price changed midway through their calculation!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.state;
 
 import com.quantstream.backend.domain.StockTick;
@@ -23,14 +61,17 @@ import java.util.List;
  */
 public class MarketState {
 
+    // By default, we keep history of the last 100 ticks per stock
     public static final int DEFAULT_MAX_WINDOW_SIZE = 100;
 
     private final String symbol;
     private final int maxWindowSize;
 
+    // Double-ended queues (Deques) allow fast adding to the back and removing from the front
     private final Deque<BigDecimal> recentPrices;
     private final Deque<Long> recentVolumes;
 
+    // Live session variables
     private BigDecimal latestPrice;
     private BigDecimal previousPrice;
     private BigDecimal openPrice;
@@ -41,7 +82,7 @@ public class MarketState {
     private long tickCount;
     private Instant latestTimestamp;
 
-    // Rolling sum for fast SMA calculation
+    // Rolling sums for fast O(1) SMA calculation
     private BigDecimal priceRollingSum = BigDecimal.ZERO;
     private long volumeRollingSum = 0L;
 
@@ -79,6 +120,7 @@ public class MarketState {
         long volume = tick.volume();
         Instant timestamp = tick.timestamp();
 
+        // Save previous price before updating to the new one
         this.previousPrice = this.latestPrice != null ? this.latestPrice : price;
         this.latestPrice = price;
         this.latestVolume = volume;
@@ -86,6 +128,7 @@ public class MarketState {
         this.tickCount++;
         this.cumulativeVolume += volume;
 
+        // Initialize or update session High, Low, and Open prices
         if (this.openPrice == null) {
             this.openPrice = price;
             this.highPrice = price;
@@ -99,7 +142,7 @@ public class MarketState {
             }
         }
 
-        // Maintain bounded price window and rolling sum
+        // Maintain bounded price window (remove oldest price if window is full)
         if (recentPrices.size() >= maxWindowSize) {
             BigDecimal evictedPrice = recentPrices.removeFirst();
             priceRollingSum = priceRollingSum.subtract(evictedPrice);
@@ -107,7 +150,7 @@ public class MarketState {
         recentPrices.addLast(price);
         priceRollingSum = priceRollingSum.add(price);
 
-        // Maintain bounded volume window and rolling sum
+        // Maintain bounded volume window (remove oldest volume if window is full)
         if (recentVolumes.size() >= maxWindowSize) {
             long evictedVolume = recentVolumes.removeFirst();
             volumeRollingSum -= evictedVolume;
@@ -115,11 +158,13 @@ public class MarketState {
         recentVolumes.addLast(volume);
         volumeRollingSum += volume;
 
+        // Return a fresh frozen snapshot with the new state
         return getSnapshot();
     }
 
     /**
      * Takes a point-in-time immutable snapshot of the market state.
+     * Safe to pass to any other thread because the lists are copied and cannot be modified.
      */
     public synchronized Snapshot getSnapshot() {
         return new Snapshot(
@@ -142,6 +187,7 @@ public class MarketState {
         );
     }
 
+    // Absolute price difference: (latestPrice - openPrice)
     private BigDecimal calculatePriceChange() {
         if (latestPrice == null || openPrice == null) {
             return BigDecimal.ZERO;
@@ -149,6 +195,7 @@ public class MarketState {
         return latestPrice.subtract(openPrice);
     }
 
+    // Percentage price difference: ((latestPrice - openPrice) / openPrice) * 100
     private double calculatePriceChangePercent() {
         if (latestPrice == null || openPrice == null || openPrice.compareTo(BigDecimal.ZERO) == 0) {
             return 0.0;
@@ -158,6 +205,8 @@ public class MarketState {
                 .multiply(BigDecimal.valueOf(100))
                 .doubleValue();
     }
+
+    // ===== GETTER METHODS =====
 
     public String getSymbol() {
         return symbol;
@@ -181,6 +230,7 @@ public class MarketState {
 
     /**
      * Immutable snapshot of MarketState for consumption by indicators and downstream services.
+     * Because this is a Java "record", it cannot be mutated once created.
      */
     public record Snapshot(
             String symbol,
@@ -201,6 +251,7 @@ public class MarketState {
             long volumeRollingSum
     ) {
         public Snapshot {
+            // Wrap in unmodifiable lists so nobody can accidentally call list.add() or list.clear()
             recentPrices = Collections.unmodifiableList(recentPrices);
             recentVolumes = Collections.unmodifiableList(recentVolumes);
         }

@@ -1,12 +1,44 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Engine Health Diagnostics View (frontend/src/components/EngineHealthView.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * If QuantStream were a high-performance sports car, this screen is what you see
+ * when you pop the hood open to look directly at the engine block!
+ *
+ * It gives a transparent, real-time look into the low-level distributed architecture:
+ *
+ * 1. WORKER POOL CONCURRENCY:
+ *    Shows the 4 background Java worker threads (`tick-worker-0` through `3`) that
+ *    process calculations in parallel.
+ * 2. BACKPRESSURE QUEUE METER:
+ *    A visual bar showing how full our 1,000-slot buffer queue (`ArrayBlockingQueue`) is.
+ *    If the queue stays near 0-5%, the system is running effortlessly with zero lag.
+ * 3. IN-MEMORY STATE STORE:
+ *    Confirms that rolling indicators (SMA, EMA, RSI) are computed with O(1) time
+ *    complexity using thread-safe `ConcurrentHashMap` and granular per-symbol locks.
+ * 4. KAFKA BROKER & INGESTION TELEMETRY:
+ *    Shows whether we are listening to real-world Finnhub or local simulation,
+ *    and tracks Kafka topics and consumer groups.
+ * 5. BENCHMARK & LATENCY PROFILE:
+ *    Displays verified benchmark throughput (over 33,000 price updates per second)
+ *    and ultra-low microsecond (μs) execution latencies.
+ * ==============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Cpu, Database, CheckCircle2, Layers, Zap } from 'lucide-react';
 
 export default function EngineHealthView({ apiBase }) {
+  // Real-time server telemetry data fetched from `/api/health`
   const [health, setHealth] = useState(null);
+  // System properties and configuration fetched from `/api/config`
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
+
 
   useEffect(() => {
     async function fetchInfo() {

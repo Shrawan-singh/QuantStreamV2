@@ -1,3 +1,28 @@
+/*
+ * ==================================================================================
+ * FILE: KafkaPipelineConfig.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Configures the Apache Kafka message pipeline for production deployments.
+ *
+ * Notice the annotation: `@Profile("!local")`
+ * This ensures that when running locally on your laptop without Docker/Kafka,
+ * this entire class is completely ignored and won't crash or fail to connect.
+ *
+ * BEANS CREATED HERE:
+ * 1. ProducerFactory & KafkaTemplate:
+ *    Teaches Spring how to serialize Java `StockTick` records into JSON strings
+ *    and send them over the network to the Kafka broker.
+ * 2. ConsumerFactory & ConcurrentKafkaListenerContainerFactory:
+ *    Teaches Spring how to receive JSON messages from Kafka, safely catch any corrupt
+ *    bytes (`ErrorHandlingDeserializer`), and convert them back into `StockTick` objects.
+ * 3. NewTopic:
+ *    Automatically asks the Kafka cluster to create the "market-ticks" topic if it
+ *    does not already exist!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.config;
 
 import com.quantstream.backend.domain.StockTick;
@@ -39,6 +64,9 @@ public class KafkaPipelineConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaPipelineConfig.class);
 
+    /**
+     * Producer factory: converts StockTick records into JSON bytes for Kafka.
+     */
     @Bean
     public ProducerFactory<String, StockTick> producerFactory(KafkaProperties kafkaProperties, ObjectProvider<SslBundles> sslBundles) {
         Map<String, Object> props = new HashMap<>(kafkaProperties.buildProducerProperties(sslBundles.getIfAvailable()));
@@ -47,11 +75,18 @@ public class KafkaPipelineConfig {
         return new DefaultKafkaProducerFactory<>(props);
     }
 
+    /**
+     * High-level template used by StockTickKafkaProducer to send messages.
+     */
     @Bean
     public KafkaTemplate<String, StockTick> kafkaTemplate(@NonNull ProducerFactory<String, StockTick> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
     }
 
+    /**
+     * Consumer factory: deserializes JSON bytes from Kafka into Java StockTick records.
+     * Uses ErrorHandlingDeserializer so corrupted messages don't poison the consumer thread.
+     */
     @Bean
     public ConsumerFactory<String, StockTick> consumerFactory(KafkaProperties kafkaProperties, ObjectProvider<SslBundles> sslBundles) {
         Map<String, Object> props = new HashMap<>(kafkaProperties.buildConsumerProperties(sslBundles.getIfAvailable()));
@@ -64,6 +99,9 @@ public class KafkaPipelineConfig {
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
+    /**
+     * Container factory for @KafkaListener methods.
+     */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, StockTick> kafkaListenerContainerFactory(
             @NonNull ConsumerFactory<String, StockTick> consumerFactory
@@ -76,6 +114,9 @@ public class KafkaPipelineConfig {
         return factory;
     }
 
+    /**
+     * Automatically registers and creates the Kafka topic if it doesn't exist yet.
+     */
     @Bean
     public NewTopic marketTicksTopic(StreamingProperties properties) {
         return new NewTopic(properties.getMarketTicksTopic(), 1, (short) 1);

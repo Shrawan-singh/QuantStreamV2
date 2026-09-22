@@ -1,3 +1,28 @@
+/*
+ * ==================================================================================
+ * FILE: AnalyticsController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for Quantitative Analytics, Scanners, and Market Breadth.
+ *
+ * ENDPOINTS PROVIDED:
+ * 1. `GET /api/analytics/{symbol}` (e.g. `/api/analytics/AAPL`):
+ *    Retrieves the full explainable Conviction Score breakdown and factor scores
+ *    for an individual stock.
+ *
+ * 2. `GET /api/analytics/scanner?limit=10&category=VERY_STRONG`:
+ *    The "Stock Screener / Leaderboard"!
+ *    Ranks all stocks across the entire market by their Conviction Score in descending
+ *    order (highest scoring stocks first). Users can filter by category (e.g. only "STRONG" stocks).
+ *
+ * 3. `GET /api/analytics/summary`:
+ *    "Market Breadth" / Market Overview:
+ *    Calculates how many stocks are advancing (in green) vs declining (in red),
+ *    and the average overall Conviction Score of the entire market today!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.analytics.AnalyticsEngine;
@@ -25,6 +50,7 @@ public class AnalyticsController {
 
     /**
      * Retrieves analytics snapshot and explainable score for a single symbol.
+     * Route: GET /api/analytics/{symbol}
      */
     @GetMapping("/{symbol}")
     public ResponseEntity<AnalyticsSnapshot> getAnalytics(@PathVariable String symbol) {
@@ -35,6 +61,7 @@ public class AnalyticsController {
 
     /**
      * Quantitative scanner ranking stocks by conviction score descending.
+     * Route: GET /api/analytics/scanner?limit=10&category=STRONG
      */
     @GetMapping("/scanner")
     public ResponseEntity<List<AnalyticsSnapshot>> getScanner(
@@ -43,6 +70,7 @@ public class AnalyticsController {
     ) {
         List<AnalyticsSnapshot> ranked = analyticsEngine.getTopScoringStocks(limit * 2);
 
+        // Filter by category if user provided one (e.g. VERY_STRONG, STRONG, etc.)
         if (category != null && !category.isBlank()) {
             ranked = ranked.stream()
                     .filter(s -> s.scoreCategory() != null && s.scoreCategory().name().equalsIgnoreCase(category.trim()))
@@ -57,16 +85,19 @@ public class AnalyticsController {
     }
 
     /**
-     * High-level market breadth and conviction summary.
+     * High-level market breadth and conviction summary (advancers, decliners, avg score).
+     * Route: GET /api/analytics/summary
      */
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getSummary() {
         List<AnalyticsSnapshot> all = analyticsEngine.getAllLatestSnapshots();
 
+        // Count how many stocks are moving up vs moving down
         long advancing = all.stream().filter(s -> s.priceChangePercent() > 0).count();
         long declining = all.stream().filter(s -> s.priceChangePercent() < 0).count();
         long neutral = all.stream().filter(s -> s.priceChangePercent() == 0).count();
 
+        // Calculate market-wide average conviction score
         double sum = 0.0;
         for (AnalyticsSnapshot s : all) {
             sum += s.convictionScore();

@@ -1,14 +1,49 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Interactive SVG Stock Chart (frontend/src/components/InteractiveChart.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * When you look at stock apps like TradingView or Robinhood, you see a glowing line
+ * showing the stock price rising and falling over time.
+ *
+ * This component builds that interactive financial chart from scratch using pure
+ * mathematical SVG (Scalable Vector Graphics), without needing any bloated third-party
+ * charting libraries!
+ *
+ * HOW IT WORKS STEP-BY-STEP:
+ * 1. FETCH HISTORY: When you select a stock (e.g. 'AAPL'), it calls our backend
+ *    at `/api/stocks/AAPL/history` to get the last 50-100 recorded prices.
+ * 2. MERGE REAL-TIME TICKS: As new live WebSocket ticks arrive every few seconds,
+ *    it instantly appends them to the end of the chart without reloading.
+ * 3. AUTO-SCALING MATH:
+ *    Finds the lowest price ($179) and highest price ($185), then maps those dollar
+ *    values into SVG pixel coordinates on your computer screen.
+ * 4. INTERACTIVE CROSSHAIR & TOOLTIP:
+ *    When you move your mouse across the chart, a vertical crosshair line follows
+ *    your cursor and shows a small hover card with the exact price, timestamp, and SMA!
+ * 5. TWO LINES:
+ *    - Solid Cyan/Blue line: The actual stock trade price.
+ *    - Dashed Purple line: The 20-period Simple Moving Average (SMA trend baseline).
+ * ==============================================================================
+ */
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LineChart, Play } from 'lucide-react';
 import { currencySymbol, exchangeTag } from '../lib/marketUtils';
 
 export default function InteractiveChart({ symbol, currentPrice, currentSma, apiBase, isUsEquity }) {
+  // Stored historical data points loaded from the database
   const [history, setHistory] = useState([]);
+  // Loading spinner state while fetching history from backend
   const [loading, setLoading] = useState(true);
+  // Which data point index the user is hovering their mouse over (null if mouse is outside)
   const [hoverIndex, setHoverIndex] = useState(null);
+  // DOM reference to the chart container div
   const containerRef = useRef(null);
+
 
   // We only fetch historical data when the symbol changes
   useEffect(() => {

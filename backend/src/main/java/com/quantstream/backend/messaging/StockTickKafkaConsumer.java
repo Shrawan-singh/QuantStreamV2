@@ -1,3 +1,25 @@
+/*
+ * ==================================================================================
+ * FILE: StockTickKafkaConsumer.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the counterpart to `StockTickKafkaProducer` in production mode.
+ *
+ * Notice the annotation: `@Profile("!local")`.
+ * When running with Kafka:
+ *   - The producer pushed ticks into the "market-ticks" topic.
+ *   - THIS class listens to that topic (`@KafkaListener`).
+ *
+ * WHAT IT DOES WHEN A TICK ARRIVES FROM KAFKA:
+ * 1. `@KafkaListener(...)`: Spring Kafka automatically wakes this method up whenever
+ *    a new tick message is received from the cluster.
+ * 2. `tickValidationService.validate(tick)`: Verifies data integrity (no negative prices, etc.).
+ * 3. `tickQueueService.enqueue(tick)`: Hands the tick over to our internal worker queue
+ *    so our high-speed analytics thread pool can process it.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.messaging;
 
 import com.quantstream.backend.domain.StockTick;
@@ -23,10 +45,15 @@ public class StockTickKafkaConsumer {
         this.tickQueueService = tickQueueService;
     }
 
+    /**
+     * Listens for ticks published onto the Kafka market-ticks topic.
+     */
     @KafkaListener(topics = "${quantstream.streaming.market-ticks-topic}", groupId = "${quantstream.streaming.consumer-group-id}")
     public void onTick(StockTick tick) {
         try {
+            // 1. Validate incoming tick data
             tickValidationService.validate(tick);
+            // 2. Put tick into our internal worker queue
             tickQueueService.enqueue(tick);
             logger.debug("Kafka consumer accepted tick {} for queueing", tick.symbol());
         } catch (InterruptedException ex) {

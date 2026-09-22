@@ -1,3 +1,29 @@
+/*
+ * ==================================================================================
+ * FILE: MockMarketDataProvider.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the simulation engine's "Ticker Tape".
+ *
+ * WHEN IS THIS USED?
+ * Whenever QuantStream is set to SIMULATION mode (the default mode).
+ * In Spring, `@ConditionalOnProperty(name = "quantstream.marketdata.mode", havingValue = "simulation")`
+ * tells the framework: "Only load this service if we are in simulation mode. If the user
+ * configured live mode with Finnhub, completely ignore this file!"
+ *
+ * HOW IT WORKS (THE HEARTBEAT TIMER):
+ * 1. When `connect()` is called, it starts a background clock (`ScheduledExecutorService`).
+ * 2. Every X milliseconds (configured by `properties.getIntervalMs()`, e.g. every 500ms):
+ *    - The timer wakes up.
+ *    - Calls `emitNextTickSafely()`.
+ *    - For every subscribed stock (e.g. RELIANCE, TCS, INFY), asks `DeterministicTickGenerator`
+ *      for the next simulated price.
+ *    - Hands each tick to the `tickListener` (which forwards it into the processing pipeline).
+ * 3. When `disconnect()` is called, the timer stops cleanly.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.marketdata.simulation;
 
 import com.quantstream.backend.config.SimulationProperties;
@@ -23,10 +49,14 @@ public class MockMarketDataProvider implements MarketDataProvider {
 
     private final SimulationProperties properties;
     private final DeterministicTickGenerator tickGenerator;
-    private ScheduledExecutorService scheduler;
+    private ScheduledExecutorService scheduler; // Background timer thread
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final AtomicInteger cursor = new AtomicInteger(0);
+
+    // List of stocks we are currently generating simulated prices for
     private final List<String> subscribedSymbols = new ArrayList<>();
+
+    // The callback listener where generated ticks will be sent (usually the TickPublisher)
     private volatile Consumer<StockTick> tickListener = tick -> { };
 
     public MockMarketDataProvider(SimulationProperties properties) {
@@ -35,8 +65,12 @@ public class MockMarketDataProvider implements MarketDataProvider {
         this.scheduler = Executors.newSingleThreadScheduledExecutor(new SimulationThreadFactory());
     }
 
+    /**
+     * Starts the simulation clock.
+     */
     @Override
     public synchronized void connect() {
+        // Atomic compareAndSet ensures we don't start the timer twice
         if (!connected.compareAndSet(false, true)) {
             return;
         }
@@ -45,15 +79,20 @@ public class MockMarketDataProvider implements MarketDataProvider {
             scheduler = Executors.newSingleThreadScheduledExecutor(new SimulationThreadFactory());
         }
 
+        // Initialize with default simulation symbols if none were manually added
         synchronized (subscribedSymbols) {
             if (subscribedSymbols.isEmpty()) {
                 subscribedSymbols.addAll(properties.getSymbols());
             }
         }
 
+        // Schedule timer to run emitNextTickSafely every intervalMs (e.g. 500ms)
         scheduler.scheduleAtFixedRate(this::emitNextTickSafely, 0L, properties.getIntervalMs(), TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Adds a new stock symbol to the simulation loop.
+     */
     @Override
     public void subscribe(String symbol) {
         synchronized (subscribedSymbols) {
@@ -63,6 +102,9 @@ public class MockMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Removes a stock symbol from the simulation loop.
+     */
     @Override
     public void unsubscribe(String symbol) {
         synchronized (subscribedSymbols) {
@@ -70,6 +112,9 @@ public class MockMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Stops the simulation clock and cancels scheduled tasks.
+     */
     @Override
     public synchronized void disconnect() {
         if (connected.compareAndSet(true, false)) {
@@ -89,11 +134,18 @@ public class MockMarketDataProvider implements MarketDataProvider {
         this.tickListener = tickListener == null ? tick -> { } : tickListener;
     }
 
+    /**
+     * Called automatically by Spring when the application shuts down.
+     */
     @PreDestroy
     public void shutdown() {
         disconnect();
     }
 
+    /**
+     * The heartbeat method: iterates through all subscribed stocks, generates their next price,
+     * and sends each tick to the listener.
+     */
     private void emitNextTickSafely() {
         try {
             List<String> symbols;
@@ -124,6 +176,10 @@ public class MockMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Custom ThreadFactory naming the background thread "mock-market-data-provider"
+     * so it's easy to identify in log files and thread dumps.
+     */
     private static final class SimulationThreadFactory implements ThreadFactory {
 
         @Override

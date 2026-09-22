@@ -1,3 +1,29 @@
+/*
+ * ==================================================================================
+ * FILE: StockTickKafkaProducer.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the PRODUCTION message producer for Apache Kafka.
+ *
+ * Notice the annotation: `@Profile("!local")` (which means "NOT local").
+ * When deploying into a real Docker or Kubernetes cluster with Kafka, this class
+ * activates instead of `InProcessTickPublisher`.
+ *
+ * WHAT IS APACHE KAFKA?
+ * Apache Kafka is an ultra-fast, distributed streaming log used by companies like
+ * Netflix, Uber, and Wall Street banks. It can handle millions of messages per second.
+ *
+ * HOW IT WORKS HERE:
+ * 1. Takes the `StockTick` record.
+ * 2. Uses the stock symbol (e.g. "AAPL") as the Kafka "Partition Key".
+ *    Why? Because in Kafka, all messages with the same key go to the SAME partition.
+ *    This guarantees that price ticks for Apple always arrive in strict chronological order!
+ * 3. Sends the message asynchronously to the configured Kafka topic (e.g. "market-ticks").
+ * 4. Logs success or failure when the Kafka broker acknowledges the message.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.messaging;
 
 import com.quantstream.backend.config.StreamingProperties;
@@ -17,6 +43,7 @@ public class StockTickKafkaProducer implements TickPublisher {
 
     private static final Logger logger = LoggerFactory.getLogger(StockTickKafkaProducer.class);
 
+    // Spring Kafka helper for sending messages
     private final KafkaTemplate<String, StockTick> kafkaTemplate;
     private final StreamingProperties streamingProperties;
 
@@ -25,9 +52,15 @@ public class StockTickKafkaProducer implements TickPublisher {
         this.streamingProperties = streamingProperties;
     }
 
+    /**
+     * Publishes a tick to the distributed Kafka cluster.
+     */
     public void publish(StockTick tick) {
         String topic = Objects.requireNonNull(streamingProperties.getMarketTicksTopic());
+        // Using stock symbol as partition key ensures strict ordering per symbol
         String key = Objects.requireNonNull(tick.symbol());
+
+        // Asynchronously dispatch to Kafka
         CompletableFuture<?> sendFuture = kafkaTemplate.send(topic, key, tick);
         sendFuture.whenComplete((result, throwable) -> {
             if (throwable != null) {

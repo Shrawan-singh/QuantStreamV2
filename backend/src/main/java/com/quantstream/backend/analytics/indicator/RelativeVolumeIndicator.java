@@ -1,3 +1,31 @@
+/*
+ * ==================================================================================
+ * FILE: RelativeVolumeIndicator.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Calculates the "Relative Volume" (RVOL).
+ *
+ * WHY VOLUME MATTERS IN TRADING:
+ * Volume is the number of shares traded. If a stock price moves up 2% on tiny volume
+ * (just 100 shares), it might be an illusion or a fluke. But if it moves up 2% on
+ * 5,000,000 shares, institutional investors (like big hedge funds or banks) are piling in!
+ *
+ * WHAT DOES RVOL MEAN?
+ * RVOL compares the CURRENT trade volume to the AVERAGE baseline volume over the
+ * past 20 ticks:
+ *   Relative Volume (RVOL) = Current Volume / Average Volume
+ *
+ * HOW THE TRAFFIC LIGHT (SIGNAL) IS DECIDED:
+ *   - POSITIVE (High Participation): RVOL > 1.5x
+ *     (50% more volume than usual! Big players are active).
+ *   - NEGATIVE (Drying Up / Low Liquidity): RVOL < 0.7x
+ *     (Volume is 30% below average; very few trades happening).
+ *   - NEUTRAL (Typical): RVOL between 0.7x and 1.5x
+ *     (Normal everyday market activity).
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.indicator;
 
 import com.quantstream.backend.analytics.state.MarketState;
@@ -27,9 +55,9 @@ import java.util.List;
 public class RelativeVolumeIndicator implements QuantitativeIndicator {
 
     public static final String NAME = "RELATIVE_VOLUME";
-    private final int lookback;
-    private final double positiveThreshold;
-    private final double negativeThreshold;
+    private final int lookback;                  // Lookback window for volume baseline (default: 20 ticks)
+    private final double positiveThreshold;      // Default: 1.5x
+    private final double negativeThreshold;      // Default: 0.7x
 
     @org.springframework.beans.factory.annotation.Autowired
     public RelativeVolumeIndicator(IndicatorProperties properties) {
@@ -65,10 +93,12 @@ public class RelativeVolumeIndicator implements QuantitativeIndicator {
         }
 
         List<Long> volumes = snapshot.recentVolumes();
+        // Warm-up check: we must have collected at least 'lookback' volume entries
         if (volumes.size() < lookback) {
             return IndicatorResult.notReady();
         }
 
+        // Sum up the past 'lookback' volumes to calculate their average
         long sum = 0L;
         int startIdx = volumes.size() - lookback;
         for (int i = startIdx; i < volumes.size(); i++) {
@@ -80,16 +110,18 @@ public class RelativeVolumeIndicator implements QuantitativeIndicator {
             return IndicatorResult.notReady();
         }
 
+        // Compare the most recent volume against the average baseline
         long currentVolume = snapshot.latestVolume();
         double rvol = (double) currentVolume / avgVolume;
 
+        // Interpret signal
         Signal signal;
         if (rvol > positiveThreshold) {
-            signal = Signal.POSITIVE;
+            signal = Signal.POSITIVE; // > 1.5x normal volume
         } else if (rvol < negativeThreshold) {
-            signal = Signal.NEGATIVE;
+            signal = Signal.NEGATIVE; // < 0.7x normal volume
         } else {
-            signal = Signal.NEUTRAL;
+            signal = Signal.NEUTRAL;  // between 0.7x and 1.5x
         }
 
         return new IndicatorResult(roundTwoDecimals(rvol), signal, true);

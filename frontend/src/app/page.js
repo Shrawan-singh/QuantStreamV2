@@ -1,5 +1,35 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Main Dashboard Page (frontend/src/app/page.js)
+ * ==============================================================================
+ *
+ * WHAT IS THIS FILE FOR? (Plain English):
+ * This is the "Cockpit" of the entire QuantStream web application!
+ * Whenever you open the website, Next.js loads this file first.
+ *
+ * WHAT DOES THIS FILE DO?
+ * 1. Hooks into our live WebSocket (`useQuantStreamWebSocket`) to listen for
+ *    real-time stock price ticks streaming from the backend.
+ * 2. Manages Navigation Tabs:
+ *    - DASHBOARD: High-level overview, market breadth, spotlight stock & chart
+ *    - SCANNER: High-density spreadsheet/table of all 50-240 tracked stocks
+ *    - STOCK_DETAIL: Deep dive into a single stock's indicators (RSI, SMA, EMA, RVOL)
+ *    - WATCHLIST: User's customized list of favorite companies
+ *    - ALERTS: Set up threshold alerts (e.g., "Tell me if Apple goes over $200")
+ *    - ENGINE: Live system metrics (Kafka latency, queue capacity, worker threads)
+ * 3. Calculates Market Breadth:
+ *    - How many stocks are green (advancing) vs red (declining)?
+ *    - What is the average Conviction Score across the whole market?
+ *
+ * WHAT DOES 'use client' MEAN AT LINE 1?
+ * In Next.js, code can run either on the server or inside the user's browser.
+ * Adding `'use client'` tells Next.js: "This code needs to run inside the user's
+ * web browser so it can listen to clicks, open WebSockets, and update the screen!"
+ * ==============================================================================
+ */
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
@@ -21,10 +51,11 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-/* ────────────────────────────────────────────
-   Pipeline architecture steps
-   (inspired by reference repo's CAPTURE→VISUALIZE strip)
-   ──────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Pipeline Architecture Steps Strip:
+   Explains to the user visually how data travels through QuantStream:
+   Tick Ingestion -> Kafka/Buffer -> Indicator Math -> 4-Factor Scoring -> Screen
+   ───────────────────────────────────────────────────────────────────────────── */
 const PIPELINE_STEPS = [
   { num: '01', name: 'CAPTURE',   desc: 'Low-latency tick ingestion',    icon: 'cloud_download' },
   { num: '02', name: 'STREAM',    desc: 'WebSocket buffer & Kafka',      icon: 'stream' },
@@ -33,6 +64,7 @@ const PIPELINE_STEPS = [
   { num: '05', name: 'VISUALIZE', desc: 'Real-time terminal output',     icon: 'query_stats' },
 ];
 
+// Fallback curated popular stocks shown when a user hasn't created a custom watchlist yet
 const CURATED_NSE_SYMBOLS = new Set([
   'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
   'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'TATAMOTORS',
@@ -43,6 +75,7 @@ const CURATED_US_SYMBOLS = new Set([
 ]);
 
 export default function Home() {
+  // Connect to the backend WebSocket stream via our custom hook
   const {
     marketData,
     connectionStatus,
@@ -53,14 +86,21 @@ export default function Home() {
     apiBase,
   } = useQuantStreamWebSocket();
 
+  // --- STATE (Memory for user actions) ---
+  // Which tab is currently selected in the menu? (Default is DASHBOARD)
   const [activeTab, setActiveTab] = useState('DASHBOARD');
+  // Which specific stock did the user click on to inspect?
   const [selectedSymbol, setSelectedSymbol] = useState(null);
+  // Is the mobile sidebar drawer open or collapsed?
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // List of symbols the user saved to their personal database watchlist
   const [watchlistSymbols, setWatchlistSymbols] = useState([]);
 
+  // Transform our marketData object { AAPL: {...}, TSLA: {...} } into an easy array [ {...}, {...} ]
+  // `useMemo` caches this result so we don't waste CPU cycles re-doing it unnecessarily!
   const stocks = useMemo(() => Object.values(marketData || {}), [marketData]);
 
-  // Load user's watchlist to use as personalized curated list
+  // Load user's watchlist from PostgreSQL database when the page loads
   useEffect(() => {
     let mounted = true;
     async function loadWatchlist() {
@@ -73,7 +113,7 @@ export default function Home() {
           }
         }
       } catch (err) {
-        // Fallback silently to default curated symbols
+        // Fallback silently to default curated symbols if database isn't ready
       }
     }
     loadWatchlist();
@@ -82,6 +122,8 @@ export default function Home() {
     };
   }, [apiBase, activeTab]);
 
+  // Determine which stock cards to showcase on the top grid of the Dashboard:
+  // User's custom watchlist first; if empty, show Top 10 Curated Leaders
   const effectiveCuratedSet = useMemo(() => {
     if (watchlistSymbols.length > 0) {
       return new Set(watchlistSymbols);
@@ -94,6 +136,7 @@ export default function Home() {
     return curated.length > 0 ? curated : stocks.slice(0, 10);
   }, [stocks, effectiveCuratedSet]);
 
+  // Find the exact data for the active spotlight stock
   const activeStock = useMemo(() => {
     if (selectedSymbol && marketData[selectedSymbol]) return marketData[selectedSymbol];
     return stocks[0] || null;
@@ -103,14 +146,17 @@ export default function Home() {
   const currSym = currencySymbol(activeStock, marketConfig);
   const exchBadge = exchangeBadge(activeStock, marketConfig);
 
-  // Market breadth
+  // MARKET BREADTH: A classic Wall Street indicator!
+  // Counts how many stocks are advancing (gaining value) vs declining (losing value)
   const advancing = stocks.filter((s) => (s.priceChangePercent ?? 0) > 0).length;
   const declining = stocks.filter((s) => (s.priceChangePercent ?? 0) < 0).length;
+  // Calculate average conviction across the entire tracked universe
   const avgScore =
     stocks.length > 0
       ? stocks.reduce((acc, curr) => acc + (curr.convictionScore ?? 50), 0) / stocks.length
       : 50.0;
 
+  // Helper function to color-code signal badges (Green for Positive, Red for Negative)
   const getSignalBadge = (sig) => {
     switch (sig) {
       case 'POSITIVE':  return { color: 'var(--bullish)', bg: 'var(--bullish-bg)', label: 'POSITIVE' };
@@ -122,6 +168,7 @@ export default function Home() {
 
   return (
     <div className="app-shell">
+
       {/* ──── Sidebar ──── */}
       <Sidebar
         activeTab={activeTab}

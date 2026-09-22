@@ -1,11 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
 
-/* ═══════════════════════════════════════════════════════
-   QUANTSTREAM DESIGN SYSTEM — globals.css
-   Premium Dark Terminal Palette · Fintech-grade UI
-   ═══════════════════════════════════════════════════════ */
+/**
+ * ==============================================================================
+ * Global Design System & Stylesheet (frontend/src/app/globals.css)
+ * ==============================================================================
+ *
+ * WHAT IS THIS FILE FOR? (Plain English):
+ * If HTML is the "skeleton" of a web page and JavaScript is the "brain",
+ * then CSS (Cascading Style Sheets) is the "skin, clothing, and makeup".
+ *
+ * This file creates the sleek, dark, high-tech Bloomberg / TradingView terminal
+ * look for QuantStream:
+ * 1. CSS VARIABLES (:root): Think of these like color swatches at an interior
+ *    designer's shop. Instead of hardcoding '#10b981' in 500 places, we define
+ *    `--bullish: #10b981` once. If we ever want to tweak the green, we change it
+ *    here and the entire application updates!
+ * 2. FONTS:
+ *    - 'Inter': Clean, ultra-legible modern font used for text and button labels.
+ *    - 'JetBrains Mono': A monospaced coding font where every single digit (0-9)
+ *      has the exact same width. This prevents numbers from dancing or jittering
+ *      left-and-right when prices tick up and down rapidly!
+ * 3. FLASH ANIMATIONS:
+ *    - Green glow when a stock ticks up.
+ *    - Red glow when a stock ticks down.
+ * ==============================================================================
+ */
 
 :root {
+
   /* ─── Core Dark Palette ─── */
   --bg-primary:    #07090e;
   --bg-secondary:  #0d1117;

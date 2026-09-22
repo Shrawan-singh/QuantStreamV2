@@ -1,3 +1,25 @@
+/*
+ * ==================================================================================
+ * FILE: ScoreCategory.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Converts the numerical Conviction Score (0.0 to 100.0) into a plain-English label
+ * that human traders and dashboard users can understand at a glance.
+ *
+ * THE 5 RATING TIERS:
+ *   - VERY_WEAK   (0 to 20):   Heavy downward/bearish pressure across all indicators.
+ *   - WEAK        (21 to 40):  Leaning bearish / negative trend.
+ *   - NEUTRAL     (41 to 60):  Indecisive / Sideways chop / Indicators disagree.
+ *   - STRONG      (61 to 80):  Leaning bullish / healthy upward trend.
+ *   - VERY_STRONG (81 to 100): High conviction bullish alignment across trend, volume, and momentum.
+ *
+ * DISCLAIMER:
+ * These are quantitative signal aggregations for educational and analytical purposes,
+ * not guaranteed price forecasts or financial advice.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.scoring;
 
 /**
@@ -13,9 +35,9 @@ public enum ScoreCategory {
     STRONG("Strong", 61, 80),
     VERY_STRONG("Very Strong", 81, 100);
 
-    private final String displayName;
-    private final int minScore;
-    private final int maxScore;
+    private final String displayName; // User-facing readable text: "Very Strong", etc.
+    private final int minScore;        // Lower bound of the tier
+    private final int maxScore;        // Upper bound of the tier
 
     ScoreCategory(String displayName, int minScore, int maxScore) {
         this.displayName = displayName;
@@ -35,6 +57,9 @@ public enum ScoreCategory {
         return maxScore;
     }
 
+    /**
+     * Given a raw numerical score (e.g. 74.5), returns the matching category (e.g. STRONG).
+     */
     public static ScoreCategory fromScore(double score) {
         if (score <= 20.0) {
             return VERY_WEAK;

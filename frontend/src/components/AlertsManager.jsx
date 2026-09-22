@@ -1,22 +1,62 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Real-Time Alerts & Notification Manager (frontend/src/components/AlertsManager.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * A human trader cannot stare at a screen for 24 hours straight without blinking.
+ * This component acts like a 24/7 automated robotic watchdog!
+ *
+ * HOW TRADING ALERTS WORK:
+ * 1. CREATE AN ALERT:
+ *    You choose a stock (e.g. 'NVDA') and a mathematical rule:
+ *    - "PRICE_ABOVE $130" -> Wake me up if Nvidia breaks above $130!
+ *    - "PRICE_BELOW $110" -> Warn me if Nvidia drops below $110 (stop loss).
+ *    - "RSI_ABOVE 70"     -> Alert me if RSI is overbought (bubble warning).
+ *    - "RSI_BELOW 30"     -> Alert me if RSI is oversold (bargain dip hunting).
+ *    - "CONVICTION_ABOVE 80" -> Alert me if the 4-Factor AI reaches very strong bullish.
+ * 2. AUTOMATIC EVALUATION:
+ *    Every single millisecond when a new price arrives in Spring Boot, the backend
+ *    `AlertExecutionService` checks all active rules.
+ * 3. REAL-TIME BROADCAST:
+ *    If a threshold is breached, the server blasts a message over WebSocket (`/topic/alerts`).
+ *    This component instantly catches it, marks the alert as triggered, and records it
+ *    in the permanent PostgreSQL audit log table (`alert_trigger_history`)!
+ * ==============================================================================
+ */
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Plus, Trash2, Power, AlertTriangle, RotateCcw, History, Search, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function AlertsManager({ apiBase, latestAlertEvent }) {
+  // List of active and triggered user alerts
   const [alerts, setAlerts] = useState([]);
+  // Audit log of past triggered alert events
   const [historyItems, setHistoryItems] = useState([]);
+  // Supported stock symbols for validation & autocomplete
   const [supportedInstruments, setSupportedInstruments] = useState([]);
+  // Loading spinner state
   const [loading, setLoading] = useState(false);
+  
+  // New alert form inputs
   const [symbol, setSymbol] = useState('');
   const [conditionType, setConditionType] = useState('PRICE_ABOVE');
   const [threshold, setThreshold] = useState('');
+  
+  // Feedback banners
   const [statusMsg, setStatusMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  
+  // History drilldown modal
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedHistoryAlert, setSelectedHistoryAlert] = useState(null);
+  
+  // Autocomplete dropdown
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+
 
   const endpoint = apiBase || 'http://localhost:8080';
 

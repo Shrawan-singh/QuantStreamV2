@@ -1,3 +1,34 @@
+/*
+ * ==================================================================================
+ * FILE: TickProcessingService.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the central "WORKBENCH" where raw market ticks are turned into live insights!
+ *
+ * Each worker thread takes a tick off the conveyor belt (TickQueueService) and brings
+ * it to this service for processing.
+ *
+ * THE 6-STEP WORKBENCH ASSEMBLY LINE:
+ * 1. Validation:
+ *    Double-checks that price, symbol, and timestamp are valid.
+ * 2. Counter Metrics:
+ *    Increments total tick counter and per-symbol counters (useful for health diagnostics).
+ * 3. Run Analytics Pipeline:
+ *    Sends the tick to `AnalyticsEngine`, which updates SMA, EMA, RSI, Momentum,
+ *    and generates the unified `AnalyticsSnapshot` with the Conviction Score!
+ * 4. Live WebSocket Broadcast:
+ *    Instantly pushes the new price and conviction score out to connected web browsers
+ *    and dashboards so the user sees live charts updating in real time!
+ * 5. Autonomous Alert Evaluation:
+ *    Checks if the user set any alerts (e.g. "Alert me if AAPL score > 80").
+ *    If triggered, fires a notification!
+ * 6. Asynchronous Persistence:
+ *    Hands the snapshot to a background queue to be saved to the PostgreSQL/H2 database
+ *    WITHOUT slowing down the live streaming hot path!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.processing;
 
 import com.quantstream.backend.analytics.AnalyticsEngine;
@@ -41,6 +72,7 @@ public class TickProcessingService {
     private final AnalyticsPersistenceService persistenceService;
     private final AlertExecutionService alertExecutionService;
 
+    // High-performance atomic counters for throughput metrics
     private final AtomicLong totalProcessed = new AtomicLong(0L);
     private final ConcurrentHashMap<String, AtomicLong> processedBySymbol = new ConcurrentHashMap<>();
 
@@ -96,28 +128,31 @@ public class TickProcessingService {
         );
     }
 
+    /**
+     * The master processing step executed for every single tick.
+     */
     public void process(StockTick tick) {
-        // 1. Validation
+        // Step 1: Validation
         tickValidationService.validate(tick);
 
-        // 2. Metrics counting
+        // Step 2: Metrics counting (atomic thread-safe increment)
         long total = totalProcessed.incrementAndGet();
         processedBySymbol.computeIfAbsent(tick.symbol(), symbol -> new AtomicLong()).incrementAndGet();
 
-        // 3. Quantitative Analytics Pipeline
+        // Step 3: Run the full quantitative analytics pipeline (SMA, EMA, RSI, Momentum, Conviction Score)
         AnalyticsSnapshot snapshot = analyticsEngine.process(tick);
 
-        // 4. Real-time WebSocket Broadcast (fire-and-forget, non-blocking)
+        // Step 4: Real-time WebSocket broadcast out to connected user browsers
         if (webSocketService != null) {
             webSocketService.broadcast(snapshot);
         }
 
-        // 5. Alert Evaluation with one-shot trigger semantics
+        // Step 5: Check user-configured alerts (e.g. Price > X or Score > Y)
         if (alertExecutionService != null) {
             alertExecutionService.evaluate(snapshot);
         }
 
-        // 6. Asynchronous persistence (throttled off hot path)
+        // Step 6: Queue snapshot for database saving off the hot execution path
         if (persistenceService != null) {
             persistenceService.enqueue(snapshot);
         }

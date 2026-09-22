@@ -1,10 +1,22 @@
--- QuantStream V2: Alert History and Simulation Universe Expansion
+-- ==================================================================================
+-- FLYWAY DATABASE MIGRATION: V2__alert_history_and_universe_expansion.sql
+-- ==================================================================================
+--
+-- WHAT THIS SCRIPT DOES:
+-- 1. Updates `alert_configs` with columns for one-shot trigger state:
+--    `triggered` (boolean), `triggered_at` (timestamp), `triggered_value` (numeric).
+-- 2. Creates `alert_trigger_history` table:
+--    An audit trail recording every time an alert condition was breached.
+-- 3. Expands the seed list to 40 major NSE equities.
+-- ==================================================================================
 
+-- Add trigger state columns to existing alert_configs table
 ALTER TABLE alert_configs
 ADD COLUMN IF NOT EXISTS triggered BOOLEAN NOT NULL DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS triggered_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS triggered_value NUMERIC(12, 4);
 
+-- Create table to store the audit log of fired alert notifications
 CREATE TABLE IF NOT EXISTS alert_trigger_history (
     id BIGSERIAL PRIMARY KEY,
     alert_id BIGINT REFERENCES alert_configs(id) ON DELETE CASCADE,
@@ -15,10 +27,11 @@ CREATE TABLE IF NOT EXISTS alert_trigger_history (
     triggered_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Fast lookup indexes for history by symbol and alert rule
 CREATE INDEX IF NOT EXISTS idx_alert_history_symbol ON alert_trigger_history (symbol, triggered_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alert_history_alert ON alert_trigger_history (alert_id, triggered_at DESC);
 
--- Populate all 40 realistic NSE simulation instruments
+-- Populate 40 realistic NSE simulation instruments into database
 INSERT INTO symbols (symbol, company_name, exchange, active) VALUES
     ('RELIANCE', 'Reliance Industries Ltd', 'NSE', true),
     ('TCS', 'Tata Consultancy Services Ltd', 'NSE', true),

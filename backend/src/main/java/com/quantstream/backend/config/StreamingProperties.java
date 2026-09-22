@@ -1,3 +1,23 @@
+/*
+ * ==================================================================================
+ * FILE: StreamingProperties.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Holds configuration for Kafka streaming and internal worker thread concurrency.
+ *
+ * Spring automatically binds this to the YAML section: `quantstream.streaming`.
+ *
+ * SETTINGS:
+ * - marketTicksTopic:       The name of the Kafka topic (default: "market-ticks").
+ * - consumerGroupId:        The Kafka consumer group identifier.
+ * - queueSize:              Capacity of internal in-memory queue buffer (default: 1000).
+ * - workerPoolSize:         Number of concurrent background worker threads (default: 4).
+ * - workerPollTimeoutMs:    How long workers wait on an empty queue before retrying (500ms).
+ * - shutdownTimeoutMs:      Maximum wait time for threads to terminate gracefully (5000ms).
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.config;
 
 import jakarta.validation.constraints.Min;

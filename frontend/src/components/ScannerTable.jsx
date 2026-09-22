@@ -1,5 +1,35 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * High-Speed Financial Stock Scanner (frontend/src/components/ScannerTable.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * Professional quant traders don't look at one stock at a time. They look at a
+ * "Scanner" (or Screener) — a dense, real-time spreadsheet that continuously sorts,
+ * filters, and monitors hundreds of stocks at once!
+ *
+ * KEY FEATURES IN THIS SCANNER:
+ * 1. MULTI-FACTOR FILTERING:
+ *    - By Conviction Tier: Instantly isolate 'VERY STRONG' bullish stocks or 'WEAK' stocks.
+ *    - By Sector: Filter to only Technology, Financials, Healthcare, Energy, etc.
+ *    - By Minimum Score: A slider to find stocks with conviction > 75.
+ *    - By Search Query: Instant symbol or company search.
+ * 2. MULTI-COLUMN SORTING:
+ *    Click any column header (Price, Change %, RSI, SMA, RVOL, Conviction) to sort
+ *    highest-to-lowest or lowest-to-highest.
+ * 3. VIRTUALIZED SCROLLING (`react-window`):
+ *    If our universe contains 240 stocks, drawing 240 complex rows with glowing badges
+ *    all at once could slow down your browser. `react-window` is a genius optimization:
+ *    it only renders the 10-15 rows currently visible on your screen, recycling DOM
+ *    nodes as you scroll for silky-smooth 60 frames-per-second performance!
+ * 4. ONE-CLICK EXPLAINABILITY MODAL:
+ *    Clicking any stock's conviction badge pops up the 4-Factor Speedometer gauge
+ *    and mathematical rationale without leaving the scanner.
+ * ==============================================================================
+ */
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowUp, ArrowDown, Search, SlidersHorizontal, Layers, X, ArrowRight } from 'lucide-react';
 import { List } from 'react-window';
@@ -13,14 +43,21 @@ export default function ScannerTable({
   marketConfig,
   apiBase,
 }) {
+  // Filter states
   const [filterCategory, setFilterCategory] = useState('ALL');
   const [sectorFilter, setSectorFilter] = useState('ALL');
   const [minScore, setMinScore] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Sort states (default: highest conviction score first)
   const [sortField, setSortField] = useState('convictionScore');
   const [sortAsc, setSortAsc] = useState(false);
+  
+  // Modal state for quick factor breakdown preview
   const [activeModalStock, setActiveModalStock] = useState(null);
+  // Master list of active instruments loaded from the backend
   const [instruments, setInstruments] = useState([]);
+
 
   const endpoint = apiBase || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 

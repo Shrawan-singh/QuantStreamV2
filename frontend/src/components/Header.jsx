@@ -1,5 +1,30 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Top Navigation Bar (frontend/src/components/Header.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * This is the header bar that sits at the very top of your browser window.
+ *
+ * KEY FEATURES:
+ * 1. QUICK STOCK SEARCH (with ⌘K / Ctrl+K shortcut):
+ *    Start typing any company name or ticker (like "Apple", "AAPL", "Reliance"),
+ *    and a dropdown appears instantly with live prices. Clicking one jumps straight
+ *    to that stock's detailed analysis page!
+ * 2. LIVE CONNECTION STATUS BADGE:
+ *    - Green "● STREAMING": WebSocket is connected and receiving live data!
+ *    - Red "○ RECONNECTING": Network dropped, system is reconnecting.
+ * 3. DATA SOURCE BADGE:
+ *    Clearly tells the user whether they are watching real New York Stock Exchange
+ *    data (Finnhub) or simulated Indian NSE equity data.
+ * 4. TICK COUNTER:
+ *    A running odometer showing how many thousands of price updates QuantStream
+ *    has ingested since this session started.
+ * ==============================================================================
+ */
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search, Menu, X } from 'lucide-react';
 
@@ -13,13 +38,18 @@ export default function Header({
   onSelectTab,
   onToggleSidebar,
 }) {
+  // Text currently typed into the search bar
   const [searchQuery, setSearchQuery] = useState('');
+  // Whether the search results dropdown menu is visible
   const [showDropdown, setShowDropdown] = useState(false);
+  // Full master list of symbols loaded from `/api/instruments/active`
   const [registry, setRegistry] = useState([]);
+  // Reference to the search box container (used to detect clicks outside to close dropdown)
   const searchRef = useRef(null);
 
   const isConnected = connectionStatus === 'CONNECTED';
   const isLive = marketConfig?.mode === 'live';
+
 
   useEffect(() => {
     fetch(`${apiBase || 'http://localhost:8080'}/api/instruments/active`)

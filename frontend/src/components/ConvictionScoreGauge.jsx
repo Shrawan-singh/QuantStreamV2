@@ -1,10 +1,37 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Conviction Score Gauge & Explainability View (frontend/src/components/ConvictionScoreGauge.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * Have you ever looked at a car's speedometer? It has a curved dial with a needle
+ * that sweeps from 0 to 100.
+ *
+ * This component draws a high-tech SVG radial dial for a stock's Conviction Score:
+ * - 0 to 30 (Red): VERY WEAK / Bearish conviction (signals suggest price may fall)
+ * - 30 to 45 (Orange): WEAK
+ * - 45 to 55 (Yellow/Amber): NEUTRAL / Sideways consolidation
+ * - 55 to 70 (Cyan): STRONG
+ * - 70 to 100 (Emerald Green): VERY STRONG / Bullish conviction
+ *
+ * WHY "EXPLAINABLE"?
+ * Many black-box trading algorithms give a random number without explaining WHY.
+ * QuantStream is designed to be 100% transparent and explainable:
+ * 1. Shows exactly how much each of the 4 factors contributed (Trend + Momentum + RSI + Volume = Total).
+ * 2. Provides plain-English bullet points explaining the mathematical evidence
+ *    behind the score (e.g. "RSI is in healthy accumulation zone at 58.2").
+ * ==============================================================================
+ */
+
 import React, { useState } from 'react';
 
 export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = false }) {
+  // Toggle state: allows user to expand or collapse detailed factor explanations
   const [showBreakdown, setShowBreakdown] = useState(showBreakdownInitial);
 
+  // If no stock data has arrived from the server yet, show a clean empty state
   if (!snapshot) {
     return (
       <div className="terminal-panel p-xl flex-col items-center justify-center text-center" style={{ minHeight: '300px' }}>
@@ -17,13 +44,16 @@ export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = 
   const category = snapshot.scoreCategory ?? 'NEUTRAL';
   const scoreColor = getCategoryColor(category);
 
-  // Math for SVG radial arc
-  const cx = 150;
-  const cy = 135;
-  const radius = 95;
-  const strokeWidth = 14;
-  const startAngle = 140;
-  const endAngle = 400;
+  // --- SVG RADIAL ARC GEOMETRY ---
+  // In computer graphics, drawing a circular curved arc requires converting polar
+  // coordinates (angles and radius) into Cartesian coordinates (X and Y pixel coordinates).
+  const cx = 150;          // Center X position in pixels
+  const cy = 135;          // Center Y position in pixels
+  const radius = 95;       // Arc radius
+  const strokeWidth = 14;  // Thickness of the curved bar
+  const startAngle = 140;  // Where the gauge starts (bottom-left)
+  const endAngle = 400;    // Where the gauge ends (bottom-right)
+
 
   const polarToCartesian = (cx, cy, r, angleInDegrees) => {
     const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;

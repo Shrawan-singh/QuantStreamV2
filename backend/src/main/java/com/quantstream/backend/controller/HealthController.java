@@ -1,3 +1,25 @@
+/*
+ * ==================================================================================
+ * FILE: HealthController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the "HEALTH DIAGNOSTICS & SYSTEM MONITOR" endpoint.
+ *
+ * Route: `GET /api/health`
+ *
+ * WHY IS THIS CRITICAL?
+ * In production trading and financial streaming applications, DevOps engineers and
+ * site reliability monitors constantly poll this endpoint to verify:
+ *   1. "Is the backend alive and healthy?" -> status: "UP"
+ *   2. "How many ticks has it processed?" -> totalTicksProcessed
+ *   3. "Is the queue backing up?" -> queueSize vs queueCapacity
+ *   4. "Are the background workers running?" -> workerPoolRunning: true
+ *   5. "Is the market stream connected?" -> marketDataStatus: "CONNECTED"
+ *   6. "What mode are we in?" -> "live" vs "simulation"
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.analytics.state.MarketStateStore;
@@ -47,6 +69,10 @@ public class HealthController {
         this.marketDataProvider = marketDataProvider;
     }
 
+    /**
+     * Diagnostic endpoint returning server health, queue metrics, and worker pool status.
+     * Route: GET /api/health
+     */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getHealth() {
         Map<String, Object> health = new HashMap<>();

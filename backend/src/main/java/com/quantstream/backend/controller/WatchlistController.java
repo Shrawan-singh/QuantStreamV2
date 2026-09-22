@@ -1,3 +1,24 @@
+/*
+ * ==================================================================================
+ * FILE: WatchlistController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for managing the user's personal WATCHLIST.
+ *
+ * Think of it like a "Favorites / Bookmarks" list:
+ *   - `GET /api/watchlist`: Returns the list of pinned stocks, automatically enriched
+ *     with their latest live prices and conviction scores from `AnalyticsEngine`.
+ *   - `POST /api/watchlist`: Adds a stock to the user's watchlist with optional notes
+ *     (e.g. "Looking to buy after earnings").
+ *   - `DELETE /api/watchlist/{symbol}`: Unpins and removes a stock from the watchlist.
+ *
+ * UNIVERSE AWARENESS:
+ * When in "live" mode, the user can only add stocks from the 50 US equities.
+ * When in "simulation" mode, the user can only add stocks from the ~240 NSE equities.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.analytics.AnalyticsEngine;
@@ -40,7 +61,8 @@ public class WatchlistController {
     }
 
     /**
-     * Returns all watchlist items with their current real-time analytics.
+     * Returns all watchlist items with their current real-time analytics merged in.
+     * Route: GET /api/watchlist
      */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getWatchlist() {
@@ -55,6 +77,7 @@ public class WatchlistController {
             map.put("notes", item.getNotes());
             map.put("addedAt", item.getAddedAt());
 
+            // Merge current live analytics snapshot (latest price, conviction score, etc.)
             AnalyticsSnapshot snapshot = analyticsEngine.getLatestSnapshot(item.getSymbol()).orElse(null);
             map.put("analytics", snapshot);
 
@@ -68,6 +91,7 @@ public class WatchlistController {
 
     /**
      * Adds an instrument to the user watchlist after strict universe validation.
+     * Route: POST /api/watchlist
      */
     @PostMapping
     public ResponseEntity<?> addToWatchlist(@RequestBody AddWatchlistRequest request) {
@@ -97,6 +121,7 @@ public class WatchlistController {
 
     /**
      * Removes an instrument from the user watchlist.
+     * Route: DELETE /api/watchlist/{symbol}
      */
     @DeleteMapping("/{symbol}")
     @Transactional

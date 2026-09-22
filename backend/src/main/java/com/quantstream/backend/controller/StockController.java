@@ -1,3 +1,33 @@
+/*
+ * ==================================================================================
+ * FILE: StockController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for stock market data.
+ *
+ * WHAT IS A REST CONTROLLER?
+ * A "Controller" is the door through which frontend apps (React / Next.js) talk to
+ * the backend server over HTTP:
+ *   - React makes an HTTP request: "GET /api/stocks"
+ *   - This controller runs, fetches the data, and returns it as JSON.
+ *
+ * ENDPOINTS PROVIDED:
+ * 1. `GET /api/stocks`
+ *    Returns the list of all stocks and their latest analytics.
+ *    SPECIAL FEATURE: If the server JUST started up and no live ticks have arrived yet,
+ *    it gracefully pre-populates initial baseline prices from `InstrumentRegistry` so
+ *    the frontend dashboard displays immediately instead of showing an empty screen!
+ *
+ * 2. `GET /api/stocks/{symbol}` (e.g. `/api/stocks/AAPL`)
+ *    Returns the real-time analytics and score for a single stock.
+ *
+ * 3. `GET /api/stocks/{symbol}/history` (e.g. `/api/stocks/AAPL/history`)
+ *    Returns the latest 50 historical snapshot points so the frontend can draw
+ *    sparklines and interactive trend charts.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.analytics.AnalyticsEngine;
@@ -47,12 +77,14 @@ public class StockController {
 
     /**
      * Lists all actively monitored stocks with their current analytics snapshot.
+     * Route: GET /api/stocks
      */
     @GetMapping
     public ResponseEntity<List<AnalyticsSnapshot>> getAllStocks() {
+        // Fetch all latest cached snapshots from the analytics engine
         List<AnalyticsSnapshot> snapshots = analyticsEngine.getAllLatestSnapshots();
 
-        // If no ticks have arrived yet, populate baseline items from the active market universe
+        // If no ticks have arrived yet (cold startup), populate baseline items from the active market universe
         if (snapshots.isEmpty()) {
             List<com.quantstream.backend.domain.Instrument> activeUniverse =
                     com.quantstream.backend.domain.InstrumentRegistry.getActiveUniverse(marketMode);
@@ -97,7 +129,8 @@ public class StockController {
     }
 
     /**
-     * Retrieves the latest analytical snapshot for a specific symbol.
+     * Retrieves the latest analytical snapshot for a specific symbol (e.g. "AAPL").
+     * Route: GET /api/stocks/{symbol}
      */
     @GetMapping("/{symbol:.+}")
     public ResponseEntity<AnalyticsSnapshot> getStockDetails(@PathVariable String symbol) {
@@ -108,6 +141,7 @@ public class StockController {
 
     /**
      * Retrieves historical snapshot observations for charting.
+     * Route: GET /api/stocks/{symbol}/history
      */
     @GetMapping("/{symbol:.+}/history")
     public ResponseEntity<List<AnalyticsSnapshotEntity>> getStockHistory(@PathVariable String symbol) {

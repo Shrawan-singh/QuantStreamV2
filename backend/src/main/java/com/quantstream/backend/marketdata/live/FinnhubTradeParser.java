@@ -1,3 +1,36 @@
+/*
+ * ==================================================================================
+ * FILE: FinnhubTradeParser.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the "Translator" for incoming data from Finnhub's live WebSocket.
+ *
+ * THE RAW DATA RECEIVED OVER THE WIRE:
+ * Finnhub sends live market messages as raw JSON text over the internet.
+ * Here is an example of what Finnhub sends when someone buys Apple stock:
+ * {
+ *   "type": "trade",
+ *   "data": [
+ *     {
+ *       "s": "AAPL",            // Stock ticker symbol
+ *       "p": 235.45,            // Price the trade happened at ($235.45)
+ *       "v": 100,               // Number of shares traded (100 shares)
+ *       "t": 1727025600000      // Unix timestamp in milliseconds
+ *     }
+ *   ]
+ * }
+ *
+ * WHAT THIS CLASS DOES:
+ * 1. Takes the raw JSON string text.
+ * 2. Uses Jackson (a popular Java JSON library) to read the fields: "s", "p", "v", "t".
+ * 3. Handles non-trade messages:
+ *    - "ping": Just a heartbeat from Finnhub to see if we're still awake. Ignored safely.
+ *    - "error": If an invalid API key was supplied, logs a warning.
+ * 4. Converts the trade data into our system's standard, strongly-typed `StockTick` record!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.marketdata.live;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,29 +52,12 @@ import java.util.UUID;
 
 /**
  * Parses real-time WebSocket trade messages from the Finnhub API into {@link StockTick} instances.
- *
- * <p>Finnhub trade message format:
- * <pre>{@code
- * {
- *   "type": "trade",
- *   "data": [
- *     {
- *       "p": 182.52,          // Last price
- *       "s": "AAPL",            // Symbol
- *       "t": 1698765432000,     // Unix timestamp in milliseconds
- *       "v": 100,               // Volume
- *       "c": ["1", "12"]        // Trade conditions (optional)
- *     }
- *   ]
- * }
- * }</pre>
- * </p>
  */
 @Component
 public class FinnhubTradeParser {
 
     private static final Logger logger = LoggerFactory.getLogger(FinnhubTradeParser.class);
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper; // Jackson JSON parser
 
     public FinnhubTradeParser() {
         this(new ObjectMapper());
@@ -63,30 +79,36 @@ public class FinnhubTradeParser {
         }
 
         try {
+            // Read JSON text into a tree of nodes
             JsonNode root = objectMapper.readTree(payload);
             String type = root.path("type").asText("");
 
+            // Filter out heartbeats
             if ("ping".equalsIgnoreCase(type)) {
                 logger.trace("Received Finnhub ping frame");
                 return Collections.emptyList();
             }
 
+            // Handle API errors
             if ("error".equalsIgnoreCase(type)) {
                 String errorMsg = root.path("msg").asText("Unknown Finnhub error");
                 logger.warn("Received error from Finnhub WebSocket: {}", errorMsg);
                 return Collections.emptyList();
             }
 
+            // If it's not a trade message, ignore it
             if (!"trade".equalsIgnoreCase(type)) {
                 logger.debug("Ignoring non-trade Finnhub message type: {}", type);
                 return Collections.emptyList();
             }
 
+            // Extract the "data" array of trades
             JsonNode dataArray = root.path("data");
             if (!dataArray.isArray() || dataArray.isEmpty()) {
                 return Collections.emptyList();
             }
 
+            // Loop through each trade inside the data array and parse it
             List<StockTick> ticks = new ArrayList<>(dataArray.size());
             for (JsonNode tradeNode : dataArray) {
                 StockTick tick = parseSingleTrade(tradeNode);
@@ -102,6 +124,10 @@ public class FinnhubTradeParser {
         }
     }
 
+    /**
+     * Helper to parse a single trade item inside the "data" array:
+     * {"s":"AAPL", "p":235.45, "v":100, "t":1727025600000}
+     */
     private StockTick parseSingleTrade(JsonNode node) {
         try {
             String symbol = node.path("s").asText(null);
@@ -113,14 +139,17 @@ public class FinnhubTradeParser {
             if (rawPrice <= 0.0) {
                 return null;
             }
+            // Format price to 2 decimal places using BigDecimal
             BigDecimal price = BigDecimal.valueOf(rawPrice).setScale(2, RoundingMode.HALF_UP);
 
             double rawVolume = node.path("v").asDouble(0.0);
             long volume = Math.max(1L, Math.round(rawVolume));
 
+            // Convert epoch millisecond timestamp to Java Instant
             long timestampMs = node.path("t").asLong(0L);
             Instant timestamp = timestampMs > 0 ? Instant.ofEpochMilli(timestampMs) : Instant.now();
 
+            // Construct immutable StockTick marked with LIVE_PROVIDER source
             return new StockTick(
                     UUID.randomUUID(),
                     symbol.trim().toUpperCase(),

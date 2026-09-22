@@ -1,3 +1,45 @@
+/*
+ * ==================================================================================
+ * FILE: ConvictionScoreEngine.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the "Brain" of QuantStream! It takes raw indicator results (SMA, EMA, RSI,
+ * Momentum, Volume) and combines them into the flagship 0-to-100 "Conviction Score".
+ *
+ * WHY A SIMPLE AVERAGE IS NOT ENOUGH:
+ * Many naive trading systems simply check "is the price 2% above the SMA?".
+ * But 2% means completely different things for different stocks:
+ *   - For a slow utility stock (like a power company), a 2% move is huge news!
+ *   - For a volatile biotech stock or crypto, a 2% move happens every 5 minutes!
+ *
+ * HOW QUANTSTREAM SOLVES THIS (QUANT FINANCE TECHNIQUES):
+ *
+ * 1. REALIZED VOLATILITY NORMALIZATION (Z-Scores):
+ *    Instead of fixed percentages, we measure the stock's actual heartbeat (volatility \(\sigma\)).
+ *    We calculate how many standard deviations (\(Z\)) the price has deviated from normal:
+ *      \(Z = \text{Divergence} / \text{Realized Volatility}\)
+ *    This ensures fair scoring whether tracking a quiet bank or a fast tech stock!
+ *
+ * 2. DUAL MOVING AVERAGE CONFIRMATION (EMA + SMA):
+ *    - If price is above BOTH SMA and EMA: Strong Bullish (+bonus points).
+ *    - If price is below BOTH SMA and EMA: Strong Bearish (-penalty points).
+ *    - If SMA says bull but EMA says bear (disagreement): Pull score towards neutral 50.
+ *
+ * 3. SCORE SMOOTHING (EMA Smoothing):
+ *    If raw score jumps from 65 to 68 to 64 every second due to tiny tick noise,
+ *    it's distracting. We apply an exponential smoothing factor (\(\alpha = 0.20\)) so
+ *    the displayed score glides smoothly like a luxury car's speedometer.
+ *
+ * 4. CATEGORY HYSTERESIS (Anti-Flicker Buffer):
+ *    Imagine the boundary between "NEUTRAL" and "STRONG" is 60.0.
+ *    If the score wavers between 59.9 and 60.1, a naive dashboard would flicker
+ *    "NEUTRAL" -> "STRONG" -> "NEUTRAL" -> "STRONG" 20 times a minute!
+ *    "Hysteresis" adds a buffer (\(\pm 1.5\)): once you enter "STRONG", you don't drop
+ *    back to "NEUTRAL" until you fall all the way below 58.5!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.scoring;
 
 import com.quantstream.backend.analytics.indicator.IndicatorResult;
@@ -18,26 +60,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Deterministic, statistically rigorous Conviction Score engine.
- *
- * <p>Key quantitative enhancements:
- * <ul>
- *   <li><b>Realized Volatility Normalization:</b> Normalizes SMA divergence and price momentum
- *       by rolling standard deviation of log returns \(r_t = \ln(P_t / P_{t-1})\) rather than fixed &plusmn;2% thresholds.</li>
- *   <li><b>Volatility-Relative Trend:</b> \(Z_{\text{trend}} = \frac{P - \text{SMA}}{\text{SMA} \times \sigma_{\text{realized}}}\).
- *       Bounded symmetric mapping to [0, 100] with \(Z_{\max} = 3.0\).</li>
- *   <li><b>Volatility-Relative Momentum:</b> \(Z_{\text{mom}} = \frac{R_{\text{lookback}}}{\sigma_{\text{realized}}}\).
- *       Bounded symmetric mapping to [0, 100] with \(Z_{\max} = 3.0\).</li>
- *   <li><b>EMA Confirmation:</b> Explicit trend-confirmation signal (bullish bonus, bearish penalty, or divergence penalty).</li>
- *   <li><b>Score Smoothing:</b> Exponential Moving Average (EMA) smoothing of displayed score (\(\alpha = 0.20\))
- *       while preserving rawConvictionScore for auditing.</li>
- *   <li><b>Category Hysteresis:</b> Eliminates rapid flipping around 40.0 and 60.0 boundary thresholds with a &plusmn;1.5 hysteresis band.</li>
- * </ul>
- * </p>
  */
 @Component
 public class ConvictionScoreEngine {
 
     private final ScoringProperties properties;
+
+    // Cache remembering the previous score and category for each symbol (needed for smoothing & hysteresis)
     private final ConcurrentHashMap<String, SymbolScoreState> symbolStates = new ConcurrentHashMap<>();
 
     public ConvictionScoreEngine(ScoringProperties properties) {
@@ -60,6 +89,7 @@ public class ConvictionScoreEngine {
                 ? snapshot.latestTimestamp()
                 : Instant.now();
 
+        // Check if ANY indicator is ready yet. If none are ready, return warm-up state.
         boolean anyReady = (smaResult != null && smaResult.ready()) ||
                 (emaResult != null && emaResult.ready()) ||
                 (rsiResult != null && rsiResult.ready()) ||
@@ -70,6 +100,7 @@ public class ConvictionScoreEngine {
             return ConvictionScore.notReady(symbol, timestamp);
         }
 
+        // Normalize weights so they always sum up to 100% (e.g. 25% + 25% + 25% + 25% = 1.0)
         double totalWeight = properties.totalWeight();
         if (totalWeight <= 0.0) {
             totalWeight = 100.0;
@@ -80,7 +111,7 @@ public class ConvictionScoreEngine {
         double wRsi = properties.rsiWeight() / totalWeight;
         double wVolume = properties.volumeWeight() / totalWeight;
 
-        // 0. Compute Realized Volatility from price history: rolling std dev of log returns
+        // Step 0: Compute Realized Volatility from price history (rolling standard deviation of log returns)
         List<BigDecimal> recentPrices = snapshot != null ? snapshot.recentPrices() : List.of();
         double realizedVol = calculateRealizedVolatility(
                 recentPrices,
@@ -88,6 +119,7 @@ public class ConvictionScoreEngine {
                 properties.minVolatilityLookback()
         );
 
+        // Determine currency symbol ($ for US stocks, ₹ for Indian stocks) for nice user explanations
         String curSym = InstrumentRegistry.getInstrument(symbol)
                 .map(com.quantstream.backend.domain.Instrument::currency)
                 .filter("USD"::equalsIgnoreCase)
@@ -96,7 +128,9 @@ public class ConvictionScoreEngine {
 
         List<String> explanations = new ArrayList<>(6);
 
-        // 1. Trend Factor Score [0 - 100] (Volatility-Relative + EMA confirmation)
+        // =========================================================================
+        // FACTOR 1: TREND SCORE [0 to 100] (Price vs Moving Averages)
+        // =========================================================================
         double trendScore = 50.0;
         Signal trendSignal = Signal.NOT_READY;
         boolean hasSma = smaResult != null && smaResult.ready();
@@ -108,10 +142,11 @@ public class ConvictionScoreEngine {
             String benchmarkName = hasSma ? "SMA" : "EMA";
 
             if (benchmarkVal > 0.0) {
+                // Percentage divergence from benchmark average: (Price - Benchmark) / Benchmark
                 double smaDivergence = (currentPrice - benchmarkVal) / benchmarkVal;
 
                 if (realizedVol < 0.0) {
-                    // Insufficient return history to calculate realized volatility
+                    // Not enough history to calculate volatility yet -> stay neutral 50.0
                     trendScore = 50.0;
                     trendSignal = Signal.NOT_READY;
                     explanations.add(String.format("Trend: 50.0 (Price %s%.2f vs %s %s%.2f; awaiting %d-period return history for realized volatility)",
@@ -119,6 +154,7 @@ public class ConvictionScoreEngine {
                 } else {
                     double effectiveVol = realizedVol;
                     boolean usedVolFloor = false;
+                    // If volatility is zero (stock didn't move at all), apply a safe floor so we don't divide by zero
                     if (effectiveVol < 1e-6) {
                         if (Math.abs(smaDivergence) < 1e-6) {
                             effectiveVol = 0.0;
@@ -128,27 +164,31 @@ public class ConvictionScoreEngine {
                         }
                     }
 
+                    // Z-score: how many standard deviations is the price above/below the benchmark?
                     double trendZ = 0.0;
                     if (effectiveVol > 0.0) {
                         trendZ = smaDivergence / effectiveVol;
                     }
 
+                    // Map Z-score to 0-100 scale (Z=0 maps to 50, Z=+3 maps to 100, Z=-3 maps to 0)
                     double trendBase = clamp(50.0 + (trendZ / properties.zScoreCap()) * 50.0, 0.0, 100.0);
 
-                    // Step 1D: EMA Confirmation
+                    // Dual Moving Average Confirmation (SMA + EMA together)
                     String emaExplanation = null;
                     if (hasSma && hasEma) {
                         double smaVal = smaResult.value();
                         double emaVal = emaResult.value();
 
                         if (currentPrice > smaVal && currentPrice > emaVal) {
+                            // Both averages agree bullish! Give bonus points.
                             trendScore = clamp(trendBase + properties.emaConfirmationBonus(), 0.0, 100.0);
                             emaExplanation = String.format("SMA and EMA agree bullish (+%.1f pts trend confirmation)", properties.emaConfirmationBonus());
                         } else if (currentPrice < smaVal && currentPrice < emaVal) {
+                            // Both averages agree bearish! Apply penalty.
                             trendScore = clamp(trendBase - properties.emaConfirmationBonus(), 0.0, 100.0);
                             emaExplanation = String.format("SMA and EMA agree bearish (-%.1f pts negative trend confirmation)", properties.emaConfirmationBonus());
                         } else {
-                            // Divergence: neutral penalty toward 50.0
+                            // Divergence (one is above, one is below): pull score back towards neutral 50.0
                             double penalty = properties.emaDivergencePenalty();
                             if (trendBase > 50.0) {
                                 trendScore = Math.max(50.0, trendBase - penalty);
@@ -182,7 +222,9 @@ public class ConvictionScoreEngine {
             explanations.add("Trend: 50.0 (Awaiting sufficient history for SMA/EMA)");
         }
 
-        // 2. Momentum Factor Score [0 - 100] (Volatility-Relative)
+        // =========================================================================
+        // FACTOR 2: MOMENTUM SCORE [0 to 100] (Rate of Change vs Volatility)
+        // =========================================================================
         double momentumScore = 50.0;
         Signal momentumSignal = Signal.NOT_READY;
         if (momentumResult != null && momentumResult.ready()) {
@@ -210,6 +252,7 @@ public class ConvictionScoreEngine {
                     momentumZ = momentumReturn / effectiveVol;
                 }
 
+                // Map Momentum Z-score to 0-100 scale
                 momentumScore = clamp(50.0 + (momentumZ / properties.zScoreCap()) * 50.0, 0.0, 100.0);
                 momentumSignal = scoreToSignal(momentumScore);
 
@@ -223,7 +266,9 @@ public class ConvictionScoreEngine {
             explanations.add("Momentum: 50.0 (Awaiting lookback period)");
         }
 
-        // 3. RSI Factor Score [0 - 100]
+        // =========================================================================
+        // FACTOR 3: RSI SCORE [0 to 100]
+        // =========================================================================
         double rsiScore = 50.0;
         Signal rsiSignal = Signal.NOT_READY;
         if (rsiResult != null && rsiResult.ready()) {
@@ -234,11 +279,14 @@ public class ConvictionScoreEngine {
             explanations.add("RSI: 50.0 (Awaiting 14-period warm-up)");
         }
 
-        // 4. Relative Volume Factor Score [0 - 100]
+        // =========================================================================
+        // FACTOR 4: RELATIVE VOLUME SCORE [0 to 100]
+        // =========================================================================
         double volumeScore = 50.0;
         Signal volumeSignal = Signal.NOT_READY;
         if (rvolResult != null && rvolResult.ready()) {
             double rvol = rvolResult.value();
+            // Baseline 1.0x RVOL maps directly to 50.0 score (2.0x maps to 100.0)
             volumeScore = clamp(rvol * 50.0, 0.0, 100.0);
             volumeSignal = scoreToSignal(volumeScore);
             explanations.add(String.format("Volume: %.1f (%.2fx of 20-period baseline)", volumeScore, rvolResult.value()));
@@ -252,32 +300,35 @@ public class ConvictionScoreEngine {
         rsiScore = roundOneDecimal(rsiScore);
         volumeScore = roundOneDecimal(volumeScore);
 
-        // Weighted contributions
+        // Compute each factor's weighted contribution (points added to total)
         double trendContribution = roundOneDecimal(wTrend * trendScore);
         double momentumContribution = roundOneDecimal(wMomentum * momentumScore);
         double rsiContribution = roundOneDecimal(wRsi * rsiScore);
         double volumeContribution = roundOneDecimal(wVolume * volumeScore);
 
-        // Composite Raw Score: rounded to 1 decimal place
+        // Raw Composite Score = sum of weighted contributions
         double rawFinalScore = trendContribution + momentumContribution + rsiContribution + volumeContribution;
         double rawScore = roundOneDecimal(clamp(rawFinalScore, 0.0, 100.0));
 
-        // 5. Score Smoothing (EMA) & Category Hysteresis
+        // =========================================================================
+        // STEP 5: SCORE SMOOTHING (EMA) & CATEGORY HYSTERESIS
+        // =========================================================================
         SymbolScoreState prevState = symbolStates.get(symbol);
-        double alpha = properties.smoothingAlpha();
+        double alpha = properties.smoothingAlpha(); // default: 0.20 (20% new, 80% previous)
         double smoothed;
 
         if (prevState == null) {
-            smoothed = rawScore;
+            smoothed = rawScore; // First score ever for this stock
         } else {
             smoothed = (alpha * rawScore) + ((1.0 - alpha) * prevState.smoothedScore);
         }
         double smoothedScore = roundOneDecimal(clamp(smoothed, 0.0, 100.0));
 
+        // Use hysteresis to decide the category (prevents flickering around 40 and 60)
         ScoreCategory lastCategory = prevState != null ? prevState.lastCategory : null;
         ScoreCategory category = calculateCategoryWithHysteresis(smoothedScore, lastCategory, properties.hysteresisBand());
 
-        // Update state cache for symbol
+        // Save new state in cache for next time
         symbolStates.put(symbol, new SymbolScoreState(smoothedScore, category, rawScore));
 
         explanations.add(String.format("Score smoothing & hysteresis: displayed=%.1f (raw=%.1f, α=%.2f; category=%s with ±%.1f hysteresis)",
@@ -314,7 +365,7 @@ public class ConvictionScoreEngine {
     }
 
     /**
-     * Calculates rolling standard deviation of log returns r_t = ln(P_t / P_{t-1}).
+     * Calculates rolling standard deviation of log returns: r_t = ln(P_t / P_{t-1}).
      *
      * @param prices recent price series
      * @param lookback maximum lookback window
@@ -346,6 +397,7 @@ public class ConvictionScoreEngine {
                 return -1.0;
             }
 
+            // Natural log return: ln(Current / Previous)
             double r = Math.log(pCurr / pPrev);
             logReturns[i] = r;
             sum += r;
@@ -357,12 +409,14 @@ public class ConvictionScoreEngine {
             return Math.abs(logReturns[0]);
         }
 
+        // Sum of squared differences from the average
         double sumSquaredDiff = 0.0;
         for (double r : logReturns) {
             double diff = r - mean;
             sumSquaredDiff += diff * diff;
         }
 
+        // Sample variance and standard deviation
         double variance = sumSquaredDiff / (returnsCount - 1);
         double stdDev = Math.sqrt(variance);
 
@@ -370,12 +424,8 @@ public class ConvictionScoreEngine {
     }
 
     /**
-     * Deterministic category hysteresis to prevent flipping around 40.0 and 60.0.
-     *
-     * @param score current smoothed score
-     * @param previous previous qualitative category
-     * @param h hysteresis band width
-     * @return qualitative score category
+     * Prevents flickering between categories (e.g. between NEUTRAL and STRONG) by
+     * requiring the score to cross a hysteresis buffer band 'h' (e.g. 1.5 points).
      */
     public static ScoreCategory calculateCategoryWithHysteresis(double score, ScoreCategory previous, double h) {
         if (previous == null) {
@@ -384,7 +434,7 @@ public class ConvictionScoreEngine {
 
         switch (previous) {
             case VERY_STRONG:
-                // Normal boundary is 80.0. To fall to STRONG, must drop below 80.0 - h
+                // Normal boundary is 80.0. To fall to STRONG, must drop below (80.0 - h)
                 if (score < (80.0 - h)) {
                     return calculateCategoryWithHysteresis(score, ScoreCategory.STRONG, h);
                 }
@@ -395,29 +445,29 @@ public class ConvictionScoreEngine {
                 if (score >= (80.0 + h)) {
                     return ScoreCategory.VERY_STRONG;
                 }
-                // Normal boundary is 60.0. To fall to NEUTRAL, must drop below 60.0 - h (e.g. < 58.5)
+                // Normal boundary is 60.0. To fall to NEUTRAL, must drop below (60.0 - h) (e.g. < 58.5)
                 if (score < (60.0 - h)) {
                     return calculateCategoryWithHysteresis(score, ScoreCategory.NEUTRAL, h);
                 }
                 return ScoreCategory.STRONG;
 
             case NEUTRAL:
-                // Normal boundary is 60.0. To rise to STRONG, must exceed 60.0 + h (e.g. >= 61.5)
+                // Normal boundary is 60.0. To rise to STRONG, must exceed (60.0 + h) (e.g. >= 61.5)
                 if (score >= (60.0 + h)) {
                     return ScoreCategory.STRONG;
                 }
-                // Normal boundary is 40.0. To fall to WEAK, must drop below 40.0 - h (e.g. <= 38.5)
+                // Normal boundary is 40.0. To fall to WEAK, must drop below (40.0 - h) (e.g. <= 38.5)
                 if (score <= (40.0 - h)) {
                     return ScoreCategory.WEAK;
                 }
                 return ScoreCategory.NEUTRAL;
 
             case WEAK:
-                // Normal boundary is 40.0. To rise to NEUTRAL, must exceed 40.0 + h (e.g. > 41.5)
+                // Normal boundary is 40.0. To rise to NEUTRAL, must exceed (40.0 + h) (e.g. > 41.5)
                 if (score > (40.0 + h)) {
                     return calculateCategoryWithHysteresis(score, ScoreCategory.NEUTRAL, h);
                 }
-                // Normal boundary is 20.0. To fall to VERY_WEAK, must drop below 20.0 - h
+                // Normal boundary is 20.0. To fall to VERY_WEAK, must drop below (20.0 - h)
                 if (score <= (20.0 - h)) {
                     return ScoreCategory.VERY_WEAK;
                 }
@@ -463,6 +513,7 @@ public class ConvictionScoreEngine {
         }
     }
 
+    // Helper holder class to remember previous state of each symbol
     public static final class SymbolScoreState {
         final double smoothedScore;
         final ScoreCategory lastCategory;

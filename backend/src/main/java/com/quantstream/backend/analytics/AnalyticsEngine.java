@@ -1,3 +1,38 @@
+/*
+ * ==================================================================================
+ * FILE: AnalyticsEngine.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the "CONDUCTOR" of the analytics orchestra!
+ *
+ * It brings together all the individual musicians (indicators, market state,
+ * and conviction scoring) to play a harmonious symphony whenever a stock price tick arrives.
+ *
+ * STEP-BY-STEP FLOW WHEN A TICK ARRIVES:
+ * 1. Step 1: Update Chalkboard
+ *    Takes the incoming tick (e.g. AAPL at $235.50) and updates the in-memory
+ *    MarketStateStore chalkboard. Gets an immutable Snapshot of the stock's state.
+ *
+ * 2. Step 2: Run All 5 Indicators
+ *    Calls SmaIndicator, EmaIndicator, RsiIndicator, MomentumIndicator, and
+ *    RelativeVolumeIndicator in sequence.
+ *
+ * 3. Step 3: Compute Conviction Score
+ *    Feeds all indicator results into ConvictionScoreEngine, which computes the
+ *    0-100 score, volatility-adjusted Z-scores, and human explanations.
+ *
+ * 4. Step 4: Package into Unified Snapshot
+ *    Bundles the market stats, indicators, conviction score, and explanations into
+ *    one single comprehensive "AnalyticsSnapshot" object.
+ *
+ * 5. Step 5: Fast In-Memory Cache
+ *    Stores the snapshot in a HashMap (`latestSnapshots`).
+ *    When a frontend browser or mobile app asks "Give me AAPL's latest score",
+ *    it is returned INSTANTLY from memory without having to query a slow database!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics;
 
 import com.quantstream.backend.analytics.indicator.EmaIndicator;
@@ -36,6 +71,7 @@ public class AnalyticsEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(AnalyticsEngine.class);
 
+    // Dependencies injected by Spring
     private final MarketStateStore marketStateStore;
     private final SmaIndicator smaIndicator;
     private final EmaIndicator emaIndicator;
@@ -44,6 +80,8 @@ public class AnalyticsEngine {
     private final RelativeVolumeIndicator relativeVolumeIndicator;
     private final ConvictionScoreEngine convictionScoreEngine;
 
+    // Fast in-memory cache: Symbol -> Latest AnalyticsSnapshot
+    // Allows instant response to REST API calls without touching the database
     private final ConcurrentHashMap<String, AnalyticsSnapshot> latestSnapshots = new ConcurrentHashMap<>();
 
     public AnalyticsEngine(
@@ -75,17 +113,17 @@ public class AnalyticsEngine {
             throw new IllegalArgumentException("Tick and symbol must not be null");
         }
 
-        // 1. Update in-memory state and obtain immutable snapshot
+        // 1. Update in-memory market state and obtain an immutable snapshot
         MarketState.Snapshot stateSnapshot = marketStateStore.update(tick);
 
-        // 2. Compute quantitative indicators
+        // 2. Compute all 5 quantitative indicators
         IndicatorResult smaResult = smaIndicator.calculate(stateSnapshot);
         IndicatorResult emaResult = emaIndicator.calculate(stateSnapshot);
         IndicatorResult rsiResult = rsiIndicator.calculate(stateSnapshot);
         IndicatorResult momentumResult = momentumIndicator.calculate(stateSnapshot);
         IndicatorResult rvolResult = relativeVolumeIndicator.calculate(stateSnapshot);
 
-        // 3. Evaluate explainable conviction score
+        // 3. Evaluate the explainable conviction score
         ConvictionScore convictionScore = convictionScoreEngine.evaluate(
                 stateSnapshot, smaResult, emaResult, rsiResult, momentumResult, rvolResult
         );
@@ -137,7 +175,7 @@ public class AnalyticsEngine {
                 convictionScore.realizedVolatility()
         );
 
-        // 5. Cache as latest snapshot for REST and query performance
+        // 5. Cache as latest snapshot for lightning-fast REST queries
         latestSnapshots.put(stateSnapshot.symbol().toUpperCase(), snapshot);
 
         logger.debug("Analytics computed for symbol={} score={} category={}",
@@ -146,17 +184,27 @@ public class AnalyticsEngine {
         return snapshot;
     }
 
+    /**
+     * Looks up the most recent snapshot for a symbol from the in-memory cache.
+     */
     public Optional<AnalyticsSnapshot> getLatestSnapshot(String symbol) {
         if (symbol == null) return Optional.empty();
         return Optional.ofNullable(latestSnapshots.get(symbol.toUpperCase()));
     }
 
+    /**
+     * Returns the latest snapshot for every actively tracked symbol.
+     */
     public List<AnalyticsSnapshot> getAllLatestSnapshots() {
         return new ArrayList<>(latestSnapshots.values());
     }
 
+    /**
+     * Returns the top N highest-scoring stocks across the market right now (Leaderboard).
+     */
     public List<AnalyticsSnapshot> getTopScoringStocks(int limit) {
         List<AnalyticsSnapshot> all = getAllLatestSnapshots();
+        // Sort descending by conviction score (highest first)
         all.sort((a, b) -> Double.compare(b.convictionScore(), a.convictionScore()));
         if (limit > 0 && all.size() > limit) {
             return all.subList(0, limit);
@@ -164,6 +212,9 @@ public class AnalyticsEngine {
         return all;
     }
 
+    /**
+     * Clears all cached analytics and market state.
+     */
     public void clear() {
         marketStateStore.clear();
         latestSnapshots.clear();

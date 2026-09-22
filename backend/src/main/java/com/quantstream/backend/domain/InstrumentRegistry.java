@@ -1,3 +1,36 @@
+/*
+ * ==================================================================================
+ * FILE: InstrumentRegistry.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * Think of this as the "Phonebook" or "Master Directory" for all stocks that
+ * QuantStream knows about. If a stock isn't in this registry, QuantStream won't
+ * track it or process its prices.
+ *
+ * TWO DIFFERENT UNIVERSES OF STOCKS:
+ * QuantStream operates in two distinct modes, and each has its own list ("universe")
+ * of stocks:
+ *
+ * 1. SIMULATION MODE (NSE Indian Stocks):
+ *    - ~240 Indian equities (like RELIANCE, TCS, INFY, HDFCBANK).
+ *    - Loaded automatically from a spreadsheet/text file: "instruments-simulation.csv".
+ *    - The backend generates realistic synthetic prices for these using math formulas.
+ *
+ * 2. LIVE MODE (US Equities via Finnhub API):
+ *    - 50 major US stocks (like AAPL, MSFT, NVDA, AMZN, TSLA, GOOGL).
+ *    - Registered directly in code below with real company names, sectors, and baseline prices.
+ *    - Connected to Finnhub's WebSocket to receive REAL live trade prices from the US stock market!
+ *
+ * WHY A "REGISTRY" IS NEEDED:
+ * Instead of hardcoding stock names all over the codebase, any service (analytics,
+ * alerts, websocket, web UI) asks this registry:
+ *   - "Is this symbol valid?" -> isSupported("AAPL")
+ *   - "What is the full company name?" -> getCompanyName("AAPL") -> "Apple Inc."
+ *   - "What stocks should we stream right now?" -> getActiveUniverse("live")
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.domain;
 
 import org.slf4j.Logger;
@@ -20,27 +53,43 @@ import java.util.Optional;
  * Single source of truth for all supported market instruments across QuantStream.
  *
  * <p>Loads a validated universe of ~240 NSE equities from classpath resource:
- * {@code instruments-simulation.csv} and maintains a distinct 7 US equity universe
+ * {@code instruments-simulation.csv} and maintains a distinct 50 US equity universe
  * for live market streaming.</p>
  */
 public final class InstrumentRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(InstrumentRegistry.class);
+
+    // Path to the CSV file inside the jar/resources folder containing Indian simulation stocks
     private static final String SIMULATION_CSV_PATH = "instruments-simulation.csv";
 
+    // Master map: Symbol string (e.g. "AAPL") -> Instrument record
+    // LinkedHashMap preserves insertion order so stocks display in a predictable sequence
     private static final Map<String, Instrument> REGISTRY = new LinkedHashMap<>();
+
+    // List of just the simulation symbols (e.g. ["RELIANCE", "TCS", ...])
     private static final List<String> SIMULATION_SYMBOLS = new ArrayList<>();
+
+    // List of just the live US symbols (e.g. ["AAPL", "MSFT", ...])
     private static final List<String> LIVE_SYMBOLS = new ArrayList<>();
+
+    // A small hand-picked subset of famous stocks shown prominently on the dashboard
     private static final List<String> CURATED_DASHBOARD_SYMBOLS = List.of(
             "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "BHARTIARTL", "ITC"
     );
 
+    /*
+     * STATIC INITIALIZER BLOCK:
+     * In Java, code inside "static { ... }" runs ONCE when the application first starts up,
+     * before any requests or background jobs run.
+     * Here we populate both stock lists so they are ready in memory.
+     */
     static {
         // 1. Load simulation instruments from external CSV resource
         loadSimulationInstrumentsFromCsv();
 
         // 2. Register 50 liquid US Equities across diverse sectors (Live Market Finnhub Universe)
-        // Mega-Cap Tech & Semis
+        // Mega-Cap Tech & Semiconductors
         registerLive("AAPL", "Apple Inc.", "NASDAQ", "USD", "Technology", "235.00");
         registerLive("MSFT", "Microsoft Corporation", "NASDAQ", "USD", "Technology", "450.00");
         registerLive("NVDA", "NVIDIA Corporation", "NASDAQ", "USD", "Semiconductors", "130.00");
@@ -70,7 +119,7 @@ public final class InstrumentRegistry {
         registerLive("DIS", "The Walt Disney Company", "NYSE", "USD", "Communication", "95.00");
         registerLive("CMCSA", "Comcast Corporation", "NASDAQ", "USD", "Communication", "40.00");
 
-        // Financials
+        // Financials & Banking
         registerLive("JPM", "JPMorgan Chase & Co.", "NYSE", "USD", "Financial Services", "215.00");
         registerLive("V", "Visa Inc.", "NYSE", "USD", "Financial Services", "280.00");
         registerLive("MA", "Mastercard Incorporated", "NYSE", "USD", "Financial Services", "480.00");
@@ -89,18 +138,18 @@ public final class InstrumentRegistry {
         registerLive("PFE", "Pfizer Inc.", "NYSE", "USD", "Healthcare", "30.00");
         registerLive("ABT", "Abbott Laboratories", "NYSE", "USD", "Healthcare", "115.00");
 
-        // Consumer Staples
+        // Consumer Staples (Retail & Everyday Goods)
         registerLive("WMT", "Walmart Inc.", "NYSE", "USD", "Consumer Staples", "70.00");
         registerLive("PG", "Procter & Gamble Company", "NYSE", "USD", "Consumer Staples", "175.00");
         registerLive("COST", "Costco Wholesale Corporation", "NASDAQ", "USD", "Consumer Staples", "880.00");
         registerLive("KO", "The Coca-Cola Company", "NYSE", "USD", "Consumer Staples", "70.00");
         registerLive("PEP", "PepsiCo Inc.", "NASDAQ", "USD", "Consumer Staples", "175.00");
 
-        // Energy
+        // Energy (Oil & Gas)
         registerLive("XOM", "Exxon Mobil Corporation", "NYSE", "USD", "Energy", "115.00");
         registerLive("CVX", "Chevron Corporation", "NYSE", "USD", "Energy", "150.00");
 
-        // Industrials
+        // Industrials & Aerospace
         registerLive("CAT", "Caterpillar Inc.", "NYSE", "USD", "Industrials", "350.00");
         registerLive("BA", "The Boeing Company", "NYSE", "USD", "Industrials", "160.00");
         registerLive("HON", "Honeywell International Inc.", "NASDAQ", "USD", "Industrials", "205.00");
@@ -110,6 +159,9 @@ public final class InstrumentRegistry {
                 SIMULATION_SYMBOLS.size(), LIVE_SYMBOLS.size());
     }
 
+    /**
+     * Reads the simulation CSV file line by line, validates each column, and registers each stock.
+     */
     private static void loadSimulationInstrumentsFromCsv() {
         InputStream is = InstrumentRegistry.class.getClassLoader().getResourceAsStream(SIMULATION_CSV_PATH);
         if (is == null) {
@@ -124,11 +176,13 @@ public final class InstrumentRegistry {
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
                 String trimmed = line.trim();
+                // Skip empty lines and comment lines that start with '#'
                 if (trimmed.isEmpty() || trimmed.startsWith("#")) {
                     continue;
                 }
 
                 String[] parts = parseCsvLine(trimmed);
+                // First non-comment line must be the header (symbol, companyName, etc.)
                 if (!headerFound) {
                     if (parts.length >= 6 && parts[0].equalsIgnoreCase("symbol")) {
                         headerFound = true;
@@ -138,6 +192,7 @@ public final class InstrumentRegistry {
                     }
                 }
 
+                // Check that line has all 6 required fields
                 if (parts.length < 6) {
                     throw new IllegalStateException("Malformed row in " + SIMULATION_CSV_PATH + " at line " + lineNumber + ": expected 6 columns, found " + parts.length);
                 }
@@ -153,6 +208,7 @@ public final class InstrumentRegistry {
                     throw new IllegalStateException("Empty symbol in " + SIMULATION_CSV_PATH + " at line " + lineNumber);
                 }
 
+                // Guard against duplicate tickers in the CSV
                 if (REGISTRY.containsKey(symbol)) {
                     throw new IllegalStateException("Duplicate symbol detected in InstrumentRegistry: " + symbol + " at line " + lineNumber);
                 }
@@ -164,6 +220,7 @@ public final class InstrumentRegistry {
                     throw new IllegalStateException("Invalid base price '" + basePriceStr + "' for symbol " + symbol + " at line " + lineNumber, e);
                 }
 
+                // Create the Instrument object and store it in both the master map and the simulation list
                 Instrument instrument = new Instrument(symbol, companyName, exchange, currency, sector, basePrice);
                 REGISTRY.put(symbol, instrument);
                 SIMULATION_SYMBOLS.add(symbol);
@@ -173,6 +230,9 @@ public final class InstrumentRegistry {
         }
     }
 
+    /**
+     * Helper to split a CSV line by comma, while properly handling quotes (e.g., "Apple, Inc.").
+     */
     private static String[] parseCsvLine(String line) {
         List<String> tokens = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
@@ -193,6 +253,10 @@ public final class InstrumentRegistry {
         return tokens.toArray(new String[0]);
     }
 
+    /**
+     * Helper to add a US stock to the live universe.
+     * Prevents adding duplicate symbols and converts basePrice string to BigDecimal.
+     */
     private static void registerLive(String symbol, String name, String exchange, String currency, String sector, String basePrice) {
         String sym = symbol.trim().toUpperCase();
         if (REGISTRY.containsKey(sym)) {
@@ -206,7 +270,7 @@ public final class InstrumentRegistry {
     /**
      * Checks if a symbol is supported in the currently active market mode.
      *
-     * @param symbol the ticker symbol to validate
+     * @param symbol the ticker symbol to validate (e.g. "AAPL" or "RELIANCE")
      * @param mode   the active market mode ("simulation" or "live")
      * @return true if the symbol belongs to the given mode's universe
      */
@@ -240,10 +304,12 @@ public final class InstrumentRegistry {
         };
     }
 
+    // Private constructor prevents anyone from instantiating this utility class with "new InstrumentRegistry()"
     private InstrumentRegistry() {}
 
     /**
-     * Checks if a symbol exists in the supported universe (case-insensitive, trimmed).
+     * Checks if a symbol exists anywhere in QuantStream (simulation OR live).
+     * Case-insensitive: "aapl", "AAPL", "  aapl  " all match correctly.
      */
     public static boolean isSupported(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -253,7 +319,7 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Checks if a symbol is in the simulation universe.
+     * Checks if a symbol is in the simulation (Indian NSE) universe.
      */
     public static boolean isSimulationSupported(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -263,7 +329,7 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Checks if a symbol is in the live US market universe.
+     * Checks if a symbol is in the live US market (Finnhub) universe.
      */
     public static boolean isLiveSupported(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -273,7 +339,8 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Looks up an instrument by symbol.
+     * Looks up an instrument by its symbol.
+     * Returns an Optional, which is empty if the symbol is not found.
      */
     public static Optional<Instrument> getInstrument(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -283,7 +350,8 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns human-readable company name for a symbol.
+     * Returns human-readable company name for a symbol (e.g. "AAPL" -> "Apple Inc.").
+     * Falls back to "Unknown Company" or "SYMBOL Corp" if not found.
      */
     public static String getCompanyName(String symbol) {
         if (symbol == null) {
@@ -306,7 +374,7 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns all registered instruments across all universes.
+     * Returns all registered instruments across all universes (simulation + live).
      */
     public static List<Instrument> getAllSupportedInstruments() {
         return Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
@@ -324,14 +392,14 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns all simulation symbol strings.
+     * Returns all simulation symbol strings as a list.
      */
     public static List<String> getSimulationSymbols() {
         return Collections.unmodifiableList(SIMULATION_SYMBOLS);
     }
 
     /**
-     * Returns all live US instruments (7 Finnhub equities).
+     * Returns all live US instruments (50 Finnhub equities).
      */
     public static List<Instrument> getLiveUniverse() {
         List<Instrument> list = new ArrayList<>();
@@ -342,7 +410,7 @@ public final class InstrumentRegistry {
     }
 
     /**
-     * Returns all live symbol strings.
+     * Returns all live symbol strings as a list.
      */
     public static List<String> getLiveSymbols() {
         return Collections.unmodifiableList(LIVE_SYMBOLS);

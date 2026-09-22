@@ -1,15 +1,47 @@
 'use client';
 
+/**
+ * ==============================================================================
+ * Market Data Mode Selector (frontend/src/components/MarketModeSelector.jsx)
+ * ==============================================================================
+ *
+ * WHAT IS THIS COMPONENT FOR? (Plain English):
+ * QuantStream has two completely different "brains" for where it gets stock prices:
+ *
+ * 1. LIVE MARKET MODE (Finnhub WebSocket):
+ *    - Connects across the internet to the New York Stock Exchange & NASDAQ.
+ *    - Tracks 50 real mega-cap US companies (Apple, Microsoft, Tesla, Nvidia...).
+ *    - Prices are in US Dollars ($).
+ *    - Requires a free Finnhub API Key.
+ *
+ * 2. SIMULATION MODE (Deterministic Random Walk):
+ *    - Runs 100% locally on your machine without needing the internet or API keys!
+ *    - Simulates realistic, smooth stock price movements for 240 Indian companies
+ *      (Reliance, TCS, HDFC Bank...) using mathematical Brownian motion.
+ *    - Prices are in Indian Rupees (₹).
+ *
+ * WHY DOES SWITCHING SHOW A POPUP MODAL INSTEAD OF A ONE-CLICK BUTTON?
+ * In Spring Boot, switching between a real internet socket and an in-memory
+ * simulator completely swaps out the low-level Java network drivers when the
+ * server turns on (via `@ConditionalOnProperty`).
+ * Therefore, this component pops up a helpful cheat-sheet modal showing the exact
+ * terminal command (`export MARKET_DATA_MODE="live"`) to restart the backend!
+ * ==============================================================================
+ */
+
 import React, { useState } from 'react';
 import { Zap, Activity, CheckCircle, Terminal, X } from 'lucide-react';
 
 export default function MarketModeSelector({ marketConfig, connectionStatus, trackedCount }) {
+  // Whether the terminal restart instruction modal is currently open
   const [showSwitchModal, setShowSwitchModal] = useState(false);
+  // Which mode the user clicked on ('live' or 'simulation')
   const [requestedMode, setRequestedMode] = useState(null);
 
   const activeMode = marketConfig?.mode?.toLowerCase() || 'simulation';
   const isLiveActive = activeMode === 'live';
   const providerStatus = marketConfig?.status || 'UNKNOWN';
+
 
   // Live status badge styling
   const getLiveBadge = () => {

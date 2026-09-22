@@ -1,3 +1,38 @@
+/*
+ * ==================================================================================
+ * FILE: LiveMarketDataProvider.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REAL-TIME LIVE MARKET pipeline connecting QuantStream to Wall Street!
+ *
+ * WHEN IS THIS USED?
+ * Only when QuantStream is launched in "live" mode:
+ *   quantstream.marketdata.mode=live
+ *
+ * HOW WE CONNECT TO WALL STREET (Finnhub WebSocket):
+ * 1. WebSockets vs Regular HTTP:
+ *    Normally, a website only gets data when you refresh the page (HTTP request).
+ *    A "WebSocket" is a permanent two-way telephone call! Once opened, Finnhub's
+ *    servers push new stock trades to us the instant they happen in New York.
+ *
+ * 2. Safe Graceful Handling (No API Key):
+ *    If the user has not set their `FINNHUB_API_KEY` environment variable,
+ *    this class does NOT crash the app. Instead, it reports its status as "UNCONFIGURED"
+ *    and prints a friendly explanation in the logs.
+ *
+ * 3. Subscribing to Stocks:
+ *    When we connect, we send a message for each stock:
+ *      {"type":"subscribe", "symbol":"AAPL"}
+ *    Finnhub will then start sending us AAPL trades immediately.
+ *
+ * 4. Automatic Reconnection (Exponential Backoff):
+ *    Internet connections drop sometimes. If the Wi-Fi blips or Finnhub reboots,
+ *    this class automatically tries to reconnect: first waiting 2 seconds, then 4,
+ *    then 8, up to 30 seconds, until the connection is restored!
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.marketdata.live;
 
 import com.quantstream.backend.domain.StockTick;
@@ -26,13 +61,6 @@ import java.util.function.Consumer;
 
 /**
  * Real-time live market data provider using the official Finnhub WebSocket trade streaming API.
- *
- * <p>Connects to {@code wss://ws.finnhub.io?token=${FINNHUB_API_KEY}} using Java standard
- * {@link java.net.http.HttpClient} WebSocket support. Subscribes to configured equity symbols
- * (e.g., AAPL, MSFT, AMZN, NVDA, GOOGL, META, TSLA) and converts live trade frames into
- * standard {@link StockTick} objects.</p>
- *
- * <p>If the API key is not configured, safely remains in {@code UNCONFIGURED} mode without crashing.</p>
  */
 @Service
 @ConditionalOnProperty(name = "quantstream.marketdata.mode", havingValue = "live")
@@ -45,6 +73,7 @@ public class LiveMarketDataProvider implements MarketDataProvider {
     @Value("${quantstream.marketdata.provider:FINNHUB}")
     private String providerName;
 
+    // Read API key from application.yml or environment variable FINNHUB_API_KEY
     @Value("${quantstream.marketdata.api-key:${FINNHUB_API_KEY:}}")
     private String apiKey;
 
@@ -53,23 +82,31 @@ public class LiveMarketDataProvider implements MarketDataProvider {
 
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final AtomicBoolean active = new AtomicBoolean(false);
+
+    // Set of US stock symbols currently subscribed to (e.g. AAPL, MSFT, NVDA)
     private final Set<String> subscribedSymbols = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private volatile Consumer<StockTick> tickListener = tick -> {};
 
     private HttpClient httpClient;
     private WebSocket webSocket;
+
+    // Background timer thread for scheduling reconnection attempts
     private final ScheduledExecutorService reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "finnhub-reconnect-worker");
         t.setDaemon(true);
         return t;
     });
 
+    // Backoff delay in seconds: doubles on failure (2s -> 4s -> 8s -> 16s -> 30s)
     private volatile int retryBackoffSeconds = 2;
 
     public LiveMarketDataProvider(FinnhubTradeParser tradeParser) {
         this.tradeParser = tradeParser;
     }
 
+    /**
+     * Connects to Finnhub's live WebSocket server.
+     */
     @Override
     public synchronized void connect() {
         if (apiKey == null || apiKey.isBlank()) {
@@ -81,10 +118,11 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         active.set(true);
 
         if (connected.get()) {
-            return;
+            return; // Already connected
         }
 
         try {
+            // Append API token to WebSocket URL
             String fullUrl = websocketUrl.trim();
             if (!fullUrl.contains("token=")) {
                 fullUrl = fullUrl + (fullUrl.contains("?") ? "&" : "?") + "token=" + apiKey.trim();
@@ -100,13 +138,14 @@ public class LiveMarketDataProvider implements MarketDataProvider {
                         .build();
             }
 
+            // Asynchronously establish the WebSocket connection
             httpClient.newWebSocketBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
                     .buildAsync(uri, new FinnhubWebSocketListener())
                     .thenAccept(ws -> {
                         this.webSocket = ws;
                         this.connected.set(true);
-                        this.retryBackoffSeconds = 2; // reset backoff
+                        this.retryBackoffSeconds = 2; // Reset retry timer on successful connection
                         logger.info("Successfully connected to Finnhub live WebSocket. Subscribing to symbols: {}", subscribedSymbols);
                         for (String symbol : subscribedSymbols) {
                             sendSubscribe(ws, symbol);
@@ -125,6 +164,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Subscribes to a stock ticker symbol (e.g. "AAPL").
+     */
     @Override
     public void subscribe(String symbol) {
         if (symbol == null || symbol.isBlank()) return;
@@ -138,6 +180,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         logger.info("Registered subscription for symbol {} on Finnhub provider", upperSym);
     }
 
+    /**
+     * Unsubscribes from a stock ticker symbol.
+     */
     @Override
     public void unsubscribe(String symbol) {
         if (symbol == null || symbol.isBlank()) return;
@@ -151,6 +196,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         logger.info("Unsubscribed from symbol {} on Finnhub provider", upperSym);
     }
 
+    /**
+     * Gracefully closes the WebSocket connection.
+     */
     @Override
     public synchronized void disconnect() {
         active.set(false);
@@ -165,6 +213,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         logger.info("Disconnected from Finnhub live market data provider");
     }
 
+    /**
+     * Returns "CONNECTED", "DISCONNECTED", or "UNCONFIGURED" (if API key is missing).
+     */
     @Override
     public String healthStatus() {
         if (apiKey == null || apiKey.isBlank()) {
@@ -186,6 +237,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         return providerName;
     }
 
+    /**
+     * Sends the JSON subscription frame to Finnhub: {"type":"subscribe","symbol":"AAPL"}
+     */
     private void sendSubscribe(WebSocket ws, String symbol) {
         try {
             String msg = String.format("{\"type\":\"subscribe\",\"symbol\":\"%s\"}", symbol);
@@ -196,6 +250,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Sends the JSON unsubscribe frame to Finnhub: {"type":"unsubscribe","symbol":"AAPL"}
+     */
     private void sendUnsubscribe(WebSocket ws, String symbol) {
         try {
             String msg = String.format("{\"type\":\"unsubscribe\",\"symbol\":\"%s\"}", symbol);
@@ -206,6 +263,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
         }
     }
 
+    /**
+     * Schedules a reconnect after a delay, doubling the wait time on each failure.
+     */
     private void scheduleReconnect() {
         if (!active.get()) return;
         int delay = retryBackoffSeconds;
@@ -221,7 +281,7 @@ public class LiveMarketDataProvider implements MarketDataProvider {
     }
 
     /**
-     * Non-blocking WebSocket listener receiving text frames from Finnhub.
+     * Non-blocking WebSocket listener that receives data frames directly from Finnhub.
      */
     private class FinnhubWebSocketListener implements WebSocket.Listener {
         private final StringBuilder buffer = new StringBuilder();
@@ -232,6 +292,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
             WebSocket.Listener.super.onOpen(webSocket);
         }
 
+        /**
+         * Called automatically whenever a text message frame arrives from Finnhub.
+         */
         @Override
         public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
             buffer.append(data);
@@ -239,7 +302,9 @@ public class LiveMarketDataProvider implements MarketDataProvider {
                 String payload = buffer.toString();
                 buffer.setLength(0);
 
+                // Parse the JSON payload into StockTick records
                 List<StockTick> ticks = tradeParser.parse(payload);
+                // Dispatch each trade to the listener
                 for (StockTick tick : ticks) {
                     try {
                         tickListener.accept(tick);

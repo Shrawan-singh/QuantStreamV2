@@ -1,3 +1,24 @@
+/*
+ * ==================================================================================
+ * FILE: ConfigController.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the REST API Controller for inspecting the active application configuration.
+ *
+ * Route: `GET /api/config`
+ *
+ * WHAT IT RETURNS:
+ * A comprehensive JSON view of all active settings:
+ *   - Indicators config: SMA period (20), EMA period (20), RSI period (14), etc.
+ *   - Scoring config: Trend weight (25%), Momentum weight (25%), etc.
+ *   - Market Data mode: "simulation" or "live", provider name, connection status.
+ *
+ * The frontend dashboard settings page calls this endpoint to display the active
+ * mathematical parameters to the user.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.controller;
 
 import com.quantstream.backend.config.IndicatorProperties;
@@ -42,6 +63,10 @@ public class ConfigController {
         this.marketDataProvider = marketDataProvider;
     }
 
+    /**
+     * Returns the active configuration parameters across all sub-systems.
+     * Route: GET /api/config
+     */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getConfig() {
         Map<String, Object> config = new HashMap<>();

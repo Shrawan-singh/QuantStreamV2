@@ -1,3 +1,37 @@
+/*
+ * ==================================================================================
+ * FILE: ConvictionScore.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the ultimate "Report Card" for a stock's quantitative health.
+ *
+ * Rather than giving the user a black-box mystery number, QuantStream's Conviction
+ * Score is 100% EXPLAINABLE! Every point in the final score is broken down into its
+ * individual ingredients:
+ *
+ * 1. THE FOUR FACTORS (Each graded 0 to 100):
+ *    - trendScore:    Is the price above its moving averages (SMA/EMA)?
+ *    - momentumScore: How fast is the price rising or falling?
+ *    - rsiScore:      Is buying pressure outpacing selling pressure?
+ *    - volumeScore:   Are institutional traders backing this move with heavy volume?
+ *
+ * 2. WEIGHTED CONTRIBUTIONS:
+ *    Each factor contributes a portion (default: 25% each) towards the 100-point total:
+ *    Final Score = (trend * 0.25) + (momentum * 0.25) + (rsi * 0.25) + (volume * 0.25)
+ *
+ * 3. EXPLAINABILITY BULLETS ("explanations"):
+ *    Plain-English sentences explaining exactly WHY the score moved.
+ *    For example: "Trend: 74.2 (Price $235.00 vs SMA $228.10, divergence: +3.02%)"
+ *
+ * 4. SMOOTHING AND VOLATILITY:
+ *    - rawScore:           The instantaneous raw score computed right this second.
+ *    - smoothedScore:      An Exponential Moving Average of recent scores to stop the
+ *                          score from jumping violently on every tiny noise tick.
+ *    - realizedVolatility: How wild or jumpy this stock's prices have actually been.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.analytics.scoring;
 
 import com.quantstream.backend.analytics.indicator.Signal;
@@ -10,7 +44,7 @@ import java.util.Map;
 /**
  * Immutable result of the continuous Conviction Score evaluation.
  *
- * @param symbol               stock ticker symbol
+ * @param symbol               stock ticker symbol (e.g. "AAPL")
  * @param score                composite displayed score between 0.0 and 100.0 (smoothed, rounded to 1 decimal place)
  * @param category             qualitative category (VERY_WEAK, WEAK, NEUTRAL, STRONG, VERY_STRONG)
  * @param trendScore           continuous factor score for trend (0.0 - 100.0)
@@ -50,6 +84,7 @@ public record ConvictionScore(
         double realizedVolatility
 ) {
     public ConvictionScore {
+        // Ensure collections cannot be modified from the outside
         explanations = explanations != null ? Collections.unmodifiableList(explanations) : List.of();
         signals = signals != null ? Collections.unmodifiableMap(signals) : Map.of();
     }
@@ -96,6 +131,11 @@ public record ConvictionScore(
         );
     }
 
+    /**
+     * Helper factory: returns a neutral 50.0 score while the system is warming up.
+     * When the app first turns on, it doesn't have enough past prices, so it displays
+     * a clean "Warming up" status instead of throwing errors.
+     */
     public static ConvictionScore notReady(String symbol, Instant timestamp) {
         return new ConvictionScore(
                 symbol,

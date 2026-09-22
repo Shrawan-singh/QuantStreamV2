@@ -1,3 +1,34 @@
+/*
+ * ==================================================================================
+ * FILE: AlertExecutionService.java
+ * ==================================================================================
+ *
+ * WHAT THIS FILE DOES:
+ * This is the "TRIPWIRE DETECTOR" for user alerts.
+ *
+ * HOW IT WORKS ON EVERY TICK:
+ * 1. An incoming snapshot arrives for a stock (e.g. AAPL at $235.00, Score 82.5).
+ * 2. This service checks in-memory cache for any active rules set by the user:
+ *    - "PRICE_ABOVE 230.00" -> MET! (235.00 > 230.00)
+ *    - "SCORE_ABOVE 80.0"   -> MET! (82.5 > 80.0)
+ *
+ * ONE-SHOT TRIGGER SEMANTICS (Crucial Concept!):
+ * If an alert matched, we do NOT want to spam the user's phone with 5,000 notifications
+ * every second while the price stays above $230!
+ * As soon as an alert is triggered:
+ *   - Its status changes to `TRIGGERED`
+ *   - It is immediately disarmed: `enabled = false`
+ *   - An audit trail is saved in the database
+ *   - A WebSocket notification pops up on the user's screen
+ * It will NEVER fire again until the user explicitly clicks "Reset / Re-arm" on the UI!
+ *
+ * IN-MEMORY CACHE (Performance):
+ * Checking the PostgreSQL database on every single tick (1,000 times/sec) would kill
+ * database performance. We keep active alerts in a fast ConcurrentHashMap (`activeAlertsCache`),
+ * and only invalidate it when alerts are created or updated.
+ * ==================================================================================
+ */
+
 package com.quantstream.backend.service;
 
 import com.quantstream.backend.domain.dto.AlertTriggerNotification;
@@ -21,11 +52,6 @@ import java.util.Optional;
 
 /**
  * High-performance alert evaluation service executed in the stream worker pipeline.
- *
- * <p>Implements strict one-shot trigger semantics: once a threshold condition is breached,
- * the alert transitions to {@code TRIGGERED}, trigger history is persisted to PostgreSQL,
- * real-time WebSocket notifications are broadcast to clients, and the alert is disarmed
- * from repeatedly triggering on subsequent ticks until explicitly re-armed.</p>
  */
 @Service
 public class AlertExecutionService {
@@ -34,7 +60,9 @@ public class AlertExecutionService {
 
     private final AlertConfigRepository alertConfigRepository;
     private final AlertTriggerHistoryRepository alertTriggerHistoryRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate; // WebSocket broadcaster
+
+    // In-memory cache: Symbol -> List of armed alerts (avoids hitting database on hot path)
     private final java.util.concurrent.ConcurrentHashMap<String, java.util.List<AlertConfigEntity>> activeAlertsCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public AlertExecutionService(
@@ -48,7 +76,7 @@ public class AlertExecutionService {
     }
 
     /**
-     * Invalidates in-memory active alerts cache for a symbol or all symbols.
+     * Clears the in-memory cache so fresh rules are loaded from database when user modifies alerts.
      */
     public void invalidateCache(String symbol) {
         if (symbol == null || symbol.isBlank()) {
@@ -58,6 +86,9 @@ public class AlertExecutionService {
         }
     }
 
+    /**
+     * Looks up active alerts for a stock from memory, or loads from DB if not cached yet.
+     */
     private java.util.List<AlertConfigEntity> getActiveAlerts(String symbol) {
         return activeAlertsCache.computeIfAbsent(symbol, sym -> {
             try {
@@ -72,11 +103,7 @@ public class AlertExecutionService {
     }
 
     /**
-     * Evaluates all active, un-triggered alerts for the given stock snapshot.
-     * Guaranteed one-shot semantics: alerts transition to TRIGGERED and disable on match.
-     *
-     * @param snapshot latest analytics snapshot for an instrument
-     * @return list of newly triggered alert notifications
+     * Evaluates all active alerts against the latest market snapshot.
      */
     @Transactional
     public List<AlertTriggerNotification> evaluate(AnalyticsSnapshot snapshot) {
@@ -87,7 +114,7 @@ public class AlertExecutionService {
         String symbol = snapshot.symbol().toUpperCase();
         List<AlertConfigEntity> activeAlerts = getActiveAlerts(symbol);
         if (activeAlerts.isEmpty()) {
-            return List.of();
+            return List.of(); // No active alerts for this stock
         }
 
         List<AlertTriggerNotification> triggeredNotifications = new ArrayList<>();
@@ -99,6 +126,7 @@ public class AlertExecutionService {
             BigDecimal triggerValue = null;
             String condition = alert.getConditionType().toUpperCase();
 
+            // Evaluate threshold condition
             switch (condition) {
                 case "PRICE_ABOVE" -> {
                     if (price != null && price.compareTo(alert.getThreshold()) > 0) {
@@ -127,24 +155,28 @@ public class AlertExecutionService {
                 default -> logger.warn("Unknown alert condition type: {}", condition);
             }
 
+            // If the condition was triggered!
             if (conditionMet && triggerValue != null) {
                 Instant now = Instant.now();
                 synchronized (alert) {
+                    // Double check nobody else triggered it first
                     if (alert.isTriggered() || !alert.isEnabled()) {
                         continue;
                     }
+                    // Disarm alert (One-shot semantics: fire once and stop)
                     alert.setTriggered(true);
                     alert.setTriggeredAt(now);
                     alert.setTriggeredValue(triggerValue);
                     alert.setEnabled(false);
                 }
+                // Remove from in-memory cache
                 activeAlerts.remove(alert);
                 triggerValue = triggerValue.setScale(2, java.math.RoundingMode.HALF_UP);
 
-                // 1. One-shot state transition persisted
+                // 1. Update database record for the alert rule
                 alertConfigRepository.save(alert);
 
-                // 2. Persist trigger history record
+                // 2. Persist audit history record
                 AlertTriggerHistoryEntity history = new AlertTriggerHistoryEntity(
                         alert.getId(),
                         alert.getSymbol(),
@@ -155,7 +187,7 @@ public class AlertExecutionService {
                 );
                 alertTriggerHistoryRepository.save(history);
 
-                // 3. Construct real-time notification
+                // 3. Construct real-time notification object
                 String message = String.format("Alert %s %s %.2f triggered at value %.2f",
                         alert.getSymbol(), alert.getConditionType(), alert.getThreshold(), triggerValue);
 
@@ -171,7 +203,7 @@ public class AlertExecutionService {
                 );
                 triggeredNotifications.add(notification);
 
-                // 4. WebSocket broadcast
+                // 4. Broadcast instant notification via WebSocket to user's screen
                 if (messagingTemplate != null) {
                     try {
                         messagingTemplate.convertAndSend("/topic/alerts", notification);
@@ -190,7 +222,7 @@ public class AlertExecutionService {
     }
 
     /**
-     * Resets a triggered or disabled alert back to ACTIVE state.
+     * Re-arms a triggered or disabled alert so it can fire again.
      */
     @Transactional
     public Optional<AlertConfigEntity> resetAlert(Long alertId) {

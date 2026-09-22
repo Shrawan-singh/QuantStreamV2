@@ -1,20 +1,43 @@
+# ==================================================================================
+# APPLICATION CONFIGURATION (LOCAL STANDALONE PROFILE)
+# ==================================================================================
+#
+# WHEN IS THIS USED?
+# When you run the backend locally with the "local" profile:
+#   mvn spring-boot:run -Dspring-boot.run.profiles=local
+#
+# WHY THIS PROFILE IS CONVENIENT FOR BEGINNERS:
+# 1. Zero External Dependencies:
+#    You don't need Docker, PostgreSQL, or Kafka installed!
+# 2. In-Memory H2 Database:
+#    Uses an embedded in-memory database (`jdbc:h2:mem:quantstream`).
+#    Tables are created automatically in RAM and disappear when you stop the server.
+# 3. Disables Kafka:
+#    Excludes `KafkaAutoConfiguration` so Spring won't complain about missing Kafka brokers.
+# ==================================================================================
+
 spring:
+  # In-memory H2 database running in PostgreSQL compatibility mode
   datasource:
     url: jdbc:h2:mem:quantstream;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: update # Automatically create database tables from Java @Entity classes
     show-sql: false
     open-in-view: false
+
   flyway:
-    enabled: false
+    enabled: false # Skip Flyway migrations in local in-memory mode
+
+  # Turn off Kafka auto-configuration so no Kafka server is required
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
 quantstream:
   simulation:
-    interval-ms: 2000
+    interval-ms: 2000 # Slower 2-second tick generation for lighter CPU usage on laptops
