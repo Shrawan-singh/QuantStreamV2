@@ -118,15 +118,15 @@ export default function Header({
   }, []);
 
   return (
-    <header className="header">
+    <header className="header" role="banner">
       <div className="header-left">
         {/* Mobile sidebar toggle */}
-        <button className="sidebar-toggle" onClick={onToggleSidebar}>
+        <button className="sidebar-toggle" onClick={onToggleSidebar} aria-label="Open navigation" type="button">
           <Menu size={22} />
         </button>
 
         {/* Search */}
-        <div ref={searchRef} style={{ position: 'relative' }}>
+        <div ref={searchRef} className="header-search" style={{ position: 'relative' }}>
           <div className="search-box" style={{ minWidth: '220px', maxWidth: '340px' }}>
             <Search size={15} color="var(--text-muted)" />
             <input
@@ -138,6 +138,7 @@ export default function Header({
                 setShowDropdown(true);
               }}
               onFocus={() => setShowDropdown(true)}
+              aria-label="Search instruments"
             />
             <span className="search-kbd">⌘K</span>
           </div>
@@ -192,7 +193,7 @@ export default function Header({
       <div className="header-right">
         {/* Truthful Connection Status */}
         <div
-          className="flex-row items-center gap-xs badge-pill"
+          className="header-status-badge flex-row items-center gap-xs badge-pill"
           style={{
             background: isConnected ? 'var(--bullish-bg)' : 'var(--bearish-bg)',
             border: `1px solid ${isConnected ? 'var(--bullish-border)' : 'var(--bearish-border)'}`,
@@ -213,7 +214,7 @@ export default function Header({
 
         {/* Truthful Data Source Status */}
         <div
-          className="flex-row items-center gap-xs badge-pill"
+          className="header-source-badge flex-row items-center gap-xs badge-pill"
           style={{
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid var(--border-color)',

@@ -102,7 +102,7 @@ export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = 
   const hasExplanations = snapshot.explanations && snapshot.explanations.length > 0;
 
   return (
-    <div className="terminal-panel flex-col items-center p-xl relative" style={{ width: '100%' }}>
+    <section className="terminal-panel flex-col items-center p-xl relative conviction-panel" style={{ width: '100%' }}>
       <div className="w-full flex-row justify-between items-center mb-xs">
         <div className="flex-row items-center gap-xs">
           <span className="material-symbols-outlined text-accent" style={{ fontSize: '18px' }}>psychology</span>
@@ -123,7 +123,7 @@ export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = 
         </div>
       </div>
 
-      <div className="relative" style={{ width: '280px', height: '190px' }}>
+      <div className="relative conviction-gauge" style={{ width: '280px', height: '190px' }}>
         {/* Ambient glow */}
         <div style={{
           position: 'absolute',
@@ -261,7 +261,7 @@ export default function ConvictionScoreGauge({ snapshot, showBreakdownInitial = 
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

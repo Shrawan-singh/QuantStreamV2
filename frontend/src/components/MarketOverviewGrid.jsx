@@ -33,7 +33,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import { currencySymbol, exchangeTag } from '../lib/marketUtils';
 
-export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSymbol, onDrillDown }) {
+export default function MarketOverviewGrid({ stocks, selectedSymbol, marketConfig, onSelectSymbol, onDrillDown }) {
   // If the server is still starting up or loading data, display skeleton placeholder boxes
   if (stocks.length === 0) {
     return (
@@ -50,22 +50,25 @@ export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSym
 
 
   return (
-    <div className="grid-auto grid-auto-fill-sm">
+    <div className="grid-auto grid-auto-fill-sm market-overview-grid" role="list">
       {stocks.map((stock) => {
         const isSelected = selectedSymbol === stock.symbol;
         const isUp = (stock.priceChangePercent ?? 0) >= 0;
         const scoreColor = getScoreColor(stock.scoreCategory);
         const flashClass = stock.tickDirection === 'up' ? 'flash-up' : stock.tickDirection === 'down' ? 'flash-down' : '';
-        const cur = currencySymbol(stock);
-        const tag = exchangeTag(stock);
+        const cur = currencySymbol(stock, marketConfig);
+        const tag = exchangeTag(stock, marketConfig);
 
         return (
           <div
             key={stock.symbol}
             data-tick-dir={stock.tickDirection || 'none'}
             className={`instrument-card ${isSelected ? 'selected' : ''} ${flashClass}`}
+            role="listitem"
+            tabIndex={0}
             onClick={() => onSelectSymbol(stock.symbol)}
             onDoubleClick={() => onDrillDown && onDrillDown(stock.symbol)}
+            onKeyDown={(event) => event.key === 'Enter' && onSelectSymbol(stock.symbol)}
           >
             {/* Top Row: Symbol + Exchange */}
             <div className="flex-row items-center justify-between mb-sm">
@@ -78,6 +81,7 @@ export default function MarketOverviewGrid({ stocks, selectedSymbol, onSelectSym
               {onDrillDown && (
                 <button
                   className="btn-ghost"
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onDrillDown(stock.symbol); }}
                   title="Full analysis"
                   style={{ padding: '2px' }}

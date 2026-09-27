@@ -67,7 +67,7 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
   };
 
   return (
-    <div className="terminal-panel p-xl mb-xl">
+    <section className="terminal-panel p-xl mb-xl mode-selector-panel">
       {/* Header Banner */}
       <div className="flex-row justify-between items-start flex-wrap gap-md mb-base">
         <div>
@@ -87,11 +87,14 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
       </div>
 
       {/* Two Large Selectable Cards */}
-      <div className="grid-auto grid-2">
+      <div className="grid-auto grid-2 mode-selector-grid">
         {/* Card 1: LIVE MARKET */}
         <div
           onClick={() => handleSelectMode('live')}
           className={`mode-card mode-card--live ${isLiveActive ? 'mode-card--active' : ''}`}
+          role="button"
+          tabIndex={isLiveActive ? -1 : 0}
+          onKeyDown={(event) => event.key === 'Enter' && handleSelectMode('live')}
         >
           {isLiveActive && (
             <div className="mode-card-active-badge badge badge-bullish">
@@ -130,6 +133,9 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
         <div
           onClick={() => handleSelectMode('simulation')}
           className={`mode-card mode-card--sim ${!isLiveActive ? 'mode-card--active' : ''}`}
+          role="button"
+          tabIndex={!isLiveActive ? -1 : 0}
+          onKeyDown={(event) => event.key === 'Enter' && handleSelectMode('simulation')}
         >
           {!isLiveActive && (
             <div className="mode-card-active-badge badge badge-neutral">
@@ -219,6 +225,6 @@ export default function MarketModeSelector({ marketConfig, connectionStatus, tra
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

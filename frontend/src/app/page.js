@@ -193,7 +193,7 @@ export default function Home() {
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
 
-        <main className="page-body">
+        <main className="page-body page-body--dashboard">
           {/* ═══ TAB: DASHBOARD ═══ */}
           {activeTab === 'DASHBOARD' && (
             <div className="flex-col gap-xl">
@@ -205,7 +205,7 @@ export default function Home() {
               />
 
               {/* Pipeline Architecture Strip */}
-              <div className="terminal-panel p-lg mb-lg">
+              <div className="terminal-panel p-lg mb-lg pipeline-panel">
                 <div className="label-caps mb-sm">QUANTSTREAM PIPELINE ARCHITECTURE</div>
                 <div className="pipeline-strip">
                   {PIPELINE_STEPS.map((step) => (
@@ -224,7 +224,7 @@ export default function Home() {
               </div>
 
               {/* Market Pulse Summary */}
-              <div className="grid-auto grid-auto-fill-sm mb-xl">
+              <div className="grid-auto grid-auto-fill-sm mb-xl market-summary-grid">
                 <div className="stat-card">
                   <div className="stat-card-label">MARKET BREADTH</div>
                   <div className="flex-row items-center gap-md">
@@ -285,6 +285,7 @@ export default function Home() {
               <MarketOverviewGrid
                 stocks={displayedStocks}
                 selectedSymbol={activeStock?.symbol}
+                marketConfig={marketConfig}
                 onSelectSymbol={setSelectedSymbol}
                 onDrillDown={(sym) => {
                   setSelectedSymbol(sym);
@@ -463,6 +464,7 @@ export default function Home() {
           {activeTab === 'WATCHLIST' && (
             <WatchlistManager
               apiBase={apiBase}
+              marketConfig={marketConfig}
               onSelectSymbol={(sym) => {
                 setSelectedSymbol(sym);
                 setActiveTab('STOCK_DETAIL');

@@ -274,7 +274,7 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
   };
 
   return (
-    <div className="terminal-panel p-xl">
+    <section className="terminal-panel p-xl alerts-panel">
       {/* Title Header */}
       <div className="flex-row justify-between items-center mb-lg">
         <div>
@@ -301,7 +301,7 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
       {/* Creation Form with Registry Autocomplete */}
       <form
         onSubmit={handleCreateAlert}
-        className="flex-row items-center flex-wrap gap-md p-base mb-xl"
+        className="flex-row items-center flex-wrap gap-md p-base mb-xl alert-form"
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -418,7 +418,7 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
       </form>
 
       {/* Active Alerts Table */}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-scroll" style={{ overflowX: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -598,6 +598,6 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

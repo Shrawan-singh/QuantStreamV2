@@ -69,10 +69,10 @@ export default function Sidebar({
         onClick={onClose}
       />
 
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`} aria-label="Primary navigation">
         <div>
           {/* Brand */}
-          <div className="sidebar-brand" onClick={() => onSelectTab('DASHBOARD')}>
+          <button className="sidebar-brand" onClick={() => onSelectTab('DASHBOARD')} type="button">
             <div className="sidebar-brand-icon">
               <Activity size={18} color="#ffffff" />
             </div>
@@ -80,7 +80,7 @@ export default function Sidebar({
               <div className="sidebar-brand-text">QUANTSTREAM</div>
               <div className="sidebar-brand-sub">Institutional</div>
             </div>
-          </div>
+          </button>
 
           {/* Nav Sections */}
           {NAV_SECTIONS.map((section) => (
@@ -91,6 +91,7 @@ export default function Sidebar({
                   <button
                     key={item.id}
                     className={`sidebar-nav-item ${activeTab === item.id ? 'active' : ''}`}
+                    type="button"
                     onClick={() => {
                       onSelectTab(item.id);
                       if (onClose) onClose();

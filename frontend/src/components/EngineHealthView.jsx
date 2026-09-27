@@ -66,7 +66,7 @@ export default function EngineHealthView({ apiBase }) {
   const queuePct = health ? Math.round(((health.queueSize ?? 0) / (health.queueCapacity || 1000)) * 100) : 0;
 
   return (
-    <div className="flex-col gap-xl">
+    <section className="flex-col gap-xl engine-view">
       {/* Title */}
       <div className="flex-row justify-between items-center flex-wrap gap-md">
         <div>
@@ -86,7 +86,7 @@ export default function EngineHealthView({ apiBase }) {
       </div>
 
       {/* Grid of 4 Diagnostic Panels */}
-      <div className="grid-auto grid-auto-fill-md">
+      <div className="grid-auto grid-auto-fill-md engine-grid">
         {/* Panel 1: Worker Pool Concurrency & Backpressure */}
         <div className="terminal-panel p-lg">
           <div className="flex-row items-center gap-xs mb-base">
@@ -233,6 +233,6 @@ export default function EngineHealthView({ apiBase }) {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

@@ -305,7 +305,7 @@ export default function ScannerTable({
   }), [sortedStocks, selectedSymbol, marketConfig, sectorBySymbol]);
 
   return (
-    <div className="flex-col gap-xl">
+    <section className="flex-col gap-xl scanner-view">
       {/* Quantitative Summary Panel */}
       <div className="terminal-panel p-xl flex-row items-center justify-between flex-wrap gap-xl">
         <div>
@@ -332,7 +332,7 @@ export default function ScannerTable({
         </div>
       </div>
 
-      <div className="terminal-panel p-xl">
+      <div className="terminal-panel p-xl scanner-panel">
         {/* Scanner Header & Controls */}
         <div className="flex-row justify-between items-start flex-wrap gap-base mb-lg">
           <div>
@@ -346,7 +346,7 @@ export default function ScannerTable({
           </div>
 
           {/* Search, Sector Filter & Min Score */}
-          <div className="flex-row items-center gap-md flex-wrap">
+          <div className="flex-row items-center gap-md flex-wrap scanner-controls">
             <div className="search-box">
               <Search size={14} color="var(--text-muted)" />
               <input
@@ -582,6 +582,6 @@ export default function ScannerTable({
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

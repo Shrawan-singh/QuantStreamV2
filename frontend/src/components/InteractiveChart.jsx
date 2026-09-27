@@ -143,14 +143,14 @@ export default function InteractiveChart({ symbol, currentPrice, currentSma, api
   const curSym = isUsEquity ? '$' : '₹';
 
   return (
-    <div className="terminal-panel p-xl">
+    <section className="terminal-panel p-xl chart-panel">
       {/* Header */}
       <div className="flex-row items-center justify-between mb-lg">
         <div className="flex-row items-center gap-xs">
           <span className="material-symbols-outlined text-accent" style={{ fontSize: '18px' }}>ssid_chart</span>
           <h3 className="section-title">MARKET INTELLIGENCE CHART</h3>
         </div>
-        <div className="flex-row items-center gap-sm">
+        <div className="flex-row items-center gap-sm chart-legend">
           <div className="flex-row items-center gap-xs text-muted" style={{ fontSize: '0.75rem' }}>
             <div style={{ width: '12px', height: '2px', background: 'var(--accent-blue)' }} />
             <span>Price</span>
@@ -172,7 +172,8 @@ export default function InteractiveChart({ symbol, currentPrice, currentSma, api
           <p>Awaiting historical ticks...</p>
         </div>
       ) : (
-        <div 
+        <div
+          className="chart-canvas"
           ref={containerRef}
           style={{ position: 'relative', width: '100%', height: '100%', cursor: 'crosshair' }}
           onMouseMove={handleMouseMove}
@@ -266,6 +267,6 @@ export default function InteractiveChart({ symbol, currentPrice, currentSma, api
           </svg>
         </div>
       )}
-    </div>
+    </section>
   );
 }

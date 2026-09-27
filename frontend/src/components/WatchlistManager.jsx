@@ -184,7 +184,7 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
   };
 
   return (
-    <div className="terminal-panel p-xl">
+    <section className="terminal-panel p-xl watchlist-panel">
       {/* Title Header */}
       <div className="flex-row justify-between items-center mb-lg">
         <div>
@@ -204,7 +204,7 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
       {/* Add Instrument Form with Autocomplete */}
       <form
         onSubmit={handleAdd}
-        className="flex-row items-center flex-wrap gap-md p-base mb-lg"
+        className="flex-row items-center flex-wrap gap-md p-base mb-lg watchlist-form"
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
@@ -300,7 +300,7 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
       </form>
 
       {/* Watchlist Table */}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-scroll" style={{ overflowX: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -411,6 +411,6 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }
