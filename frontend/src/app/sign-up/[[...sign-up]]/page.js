@@ -16,5 +16,9 @@ export default function SignUpPage() {
     )
   }
 
-  return <SignUp fallbackRedirectUrl="/dashboard" />
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '85vh', padding: '2rem' }}>
+      <SignUp fallbackRedirectUrl="/dashboard" />
+    </div>
+  )
 }

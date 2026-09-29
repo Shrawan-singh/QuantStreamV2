@@ -16,5 +16,9 @@ export default function SignInPage() {
     )
   }
 
-  return <SignIn fallbackRedirectUrl="/dashboard" />
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '85vh', padding: '2rem' }}>
+      <SignIn fallbackRedirectUrl="/dashboard" />
+    </div>
+  )
 }
