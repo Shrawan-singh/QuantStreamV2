@@ -1,31 +1,34 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-let clerkHandler: any = null;
+const hasClerkKeys = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
+);
 
-if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-  try {
-    const { clerkMiddleware, createRouteMatcher } = require('@clerk/nextjs/server');
-    const isProtectedRoute = createRouteMatcher([
-      '/dashboard(.*)',
-      '/api/watchlist(.*)',
-      '/api/alerts(.*)',
-      '/api/engine(.*)',
-    ]);
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/api/watchlist(.*)',
+  '/api/alerts(.*)',
+  '/api/engine(.*)',
+]);
 
-    clerkHandler = clerkMiddleware(async (auth: any, req: any) => {
+const clerkHandler = hasClerkKeys
+  ? clerkMiddleware(async (auth: any, req: any) => {
       if (isProtectedRoute(req)) {
         await auth.protect();
       }
-    });
-  } catch (e) {
-    console.warn('Clerk middleware initialization skipped:', e);
-  }
-}
+    })
+  : null;
 
 export default async function middleware(req: NextRequest, event: any) {
   if (clerkHandler) {
-    return clerkHandler(req, event);
+    try {
+      return await clerkHandler(req, event);
+    } catch (err) {
+      console.warn('Clerk middleware error fallback:', err);
+      return NextResponse.next();
+    }
   }
   return NextResponse.next();
 }
@@ -37,3 +40,4 @@ export const config = {
     '/__clerk/:path*',
   ],
 };
+
