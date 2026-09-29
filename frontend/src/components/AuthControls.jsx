@@ -2,7 +2,7 @@
 
 import { SignInButton, UserButton, useAuth } from '@clerk/nextjs';
 
-export default function AuthControls() {
+function ClerkControls() {
   const { isLoaded, isSignedIn } = useAuth();
 
   if (!isLoaded) return null;
@@ -47,4 +47,23 @@ export default function AuthControls() {
       }}
     />
   );
+}
+
+export default function AuthControls() {
+  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  if (!hasClerkKey) {
+    return (
+      <div className="flex-row items-center gap-xs">
+        <span
+          className="badge badge-accent font-bold"
+          style={{ fontSize: '0.72rem', padding: '4px 8px', letterSpacing: '0.5px' }}
+        >
+          SIMULATION ACTIVE
+        </span>
+      </div>
+    );
+  }
+
+  return <ClerkControls />;
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft, ArrowUpRight } from 'lucide-react'
-import { SignOutButton, UserAvatar, UserProfile, useUser } from '@clerk/nextjs'
+import { SignOutButton, UserProfile, useUser } from '@clerk/nextjs'
 import styles from './profile.module.css'
 
 const clerkAppearance = {
@@ -24,7 +24,7 @@ const clerkAppearance = {
   },
 }
 
-export default function ProfilePage() {
+function ClerkProfileContent() {
   const { isLoaded, user } = useUser()
 
   if (!isLoaded) {
@@ -66,7 +66,13 @@ export default function ProfilePage() {
         <section className={styles.identityPanel} aria-labelledby="identity-heading">
           <div className={styles.identityTop}>
             <div className={styles.identityPerson}>
-              <span className={styles.avatar}><UserAvatar rounded /></span>
+              <span className={styles.avatar}>
+                {user.imageUrl ? (
+                  <img src={user.imageUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--accent-blue)' }}>{name.charAt(0).toUpperCase()}</span>
+                )}
+              </span>
               <div className={styles.personCopy}>
                 <span className={styles.eyebrow}>SIGNED-IN USER</span>
                 <h2 id="identity-heading">{name}</h2>
@@ -105,4 +111,44 @@ export default function ProfilePage() {
       </div>
     </main>
   )
+}
+
+export default function ProfilePage() {
+  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+
+  if (!hasClerkKey) {
+    return (
+      <main className={styles.page}>
+        <header className={styles.header}>
+          <Link className={styles.brand} href="/">
+            <span className={styles.brandMark}>Q</span>
+            <span>QUANT<span>STREAM</span><i>/ ACCOUNT</i></span>
+          </Link>
+          <Link className={styles.backLink} href="/dashboard"><ArrowLeft size={15} /> Back to dashboard</Link>
+        </header>
+        <div className={styles.content}>
+          <div className={styles.pageHeading}>
+            <div>
+              <p className={styles.eyebrow}>SIMULATION MODE</p>
+              <h1>Simulation Profile</h1>
+              <p>Clerk authentication keys are not currently configured in the environment.</p>
+            </div>
+            <span className={styles.sessionBadge}><i /> SIMULATED</span>
+          </div>
+          <section className={styles.identityPanel}>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6' }}>
+              You are running the high-frequency QuantStream simulation cockpit in standalone mode. To enable full Clerk sign-in and user profiles, provide <code style={{ color: 'var(--accent-blue)' }}>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> and <code style={{ color: 'var(--accent-blue)' }}>CLERK_SECRET_KEY</code>.
+            </p>
+            <div style={{ marginTop: '20px' }}>
+              <Link href="/dashboard" className="btn btn-accent" style={{ display: 'inline-flex', padding: '8px 16px', textDecoration: 'none' }}>
+                Open Trading Cockpit
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    )
+  }
+
+  return <ClerkProfileContent />
 }

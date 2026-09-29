@@ -19,19 +19,7 @@
 import React from 'react';
 import { SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 
-export default function AuthControls() {
-  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-
-  if (!hasClerkKey) {
-    return (
-      <div className="flex-row items-center gap-xs">
-        <span className="badge badge-accent font-bold" style={{ fontSize: '0.72rem', padding: '4px 8px', letterSpacing: '0.5px' }}>
-          SIMULATION SESSION
-        </span>
-      </div>
-    );
-  }
-
+function ClerkShowControls() {
   return (
     <div className="flex-row items-center gap-sm">
       {/* Show sign-in and sign-up buttons when user is NOT authenticated */}
@@ -65,4 +53,20 @@ export default function AuthControls() {
       </Show>
     </div>
   );
+}
+
+export default function AuthControls() {
+  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  if (!hasClerkKey) {
+    return (
+      <div className="flex-row items-center gap-xs">
+        <span className="badge badge-accent font-bold" style={{ fontSize: '0.72rem', padding: '4px 8px', letterSpacing: '0.5px' }}>
+          SIMULATION SESSION
+        </span>
+      </div>
+    );
+  }
+
+  return <ClerkShowControls />;
 }
