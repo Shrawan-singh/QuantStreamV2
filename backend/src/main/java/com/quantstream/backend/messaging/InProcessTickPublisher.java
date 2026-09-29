@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
  * Direct in-process tick publisher for zero-dependency standalone local development.
  */
 @Service
-@Profile("local")
+@Profile({"local", "standalone"})
 public class InProcessTickPublisher implements TickPublisher {
 
     private static final Logger logger = LoggerFactory.getLogger(InProcessTickPublisher.class);

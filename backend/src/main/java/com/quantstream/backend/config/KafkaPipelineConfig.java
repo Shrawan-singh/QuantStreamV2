@@ -59,7 +59,7 @@ import java.util.Map;
 
 @Configuration
 @EnableKafka
-@Profile("!local")
+@Profile("!local & !standalone")
 public class KafkaPipelineConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaPipelineConfig.class);

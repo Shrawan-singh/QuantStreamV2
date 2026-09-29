@@ -38,7 +38,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Service
-@Profile("!local")
+@Profile("!local & !standalone")
 public class StockTickKafkaProducer implements TickPublisher {
 
     private static final Logger logger = LoggerFactory.getLogger(StockTickKafkaProducer.class);

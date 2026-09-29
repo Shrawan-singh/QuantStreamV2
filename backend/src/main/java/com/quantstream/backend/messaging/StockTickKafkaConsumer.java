@@ -32,7 +32,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!local")
+@Profile("!local & !standalone")
 public class StockTickKafkaConsumer {
 
     private static final Logger logger = LoggerFactory.getLogger(StockTickKafkaConsumer.class);

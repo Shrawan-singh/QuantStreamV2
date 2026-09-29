@@ -1,0 +1,19 @@
+# ==================================================================================
+# APPLICATION CONFIGURATION (STANDALONE CLOUD PROFILE)
+# ==================================================================================
+#
+# WHEN IS THIS USED?
+# When deploying the backend to Render, Railway, or Fly.io with real PostgreSQL
+# (e.g. Supabase, Neon) without needing to configure or pay for an Apache Kafka cluster!
+#
+# FEATURES:
+# 1. Real PostgreSQL connection via SPRING_DATASOURCE_URL
+# 2. Automated Flyway database migrations
+# 3. High-performance in-process worker thread queue
+# 4. Real-time WebSocket broadcasting over /ws
+# ==================================================================================
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
