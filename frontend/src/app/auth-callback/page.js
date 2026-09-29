@@ -13,18 +13,15 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@clerk/nextjs';
 
-export default function AuthCallbackPage() {
-  const router = useRouter();
+function ClerkCallbackInner({ router }) {
+  const { useAuth } = require('@clerk/nextjs');
   const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
-      // Redirect to dashboard after successful sign-in
-      router.push('/dashboard');
+      router.push('/');
     } else if (isLoaded && !isSignedIn) {
-      // Redirect back to home if not signed in
       router.push('/');
     }
   }, [isLoaded, isSignedIn, router]);
@@ -44,4 +41,32 @@ export default function AuthCallbackPage() {
       </div>
     </div>
   );
+}
+
+export default function AuthCallbackPage() {
+  const router = useRouter();
+  const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  useEffect(() => {
+    if (!hasClerkKey) {
+      router.push('/');
+    }
+  }, [hasClerkKey, router]);
+
+  if (!hasClerkKey) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        backgroundColor: '#0a0e27',
+        color: '#ffffff',
+      }}>
+        <p>Redirecting to QuantStream Dashboard...</p>
+      </div>
+    );
+  }
+
+  return <ClerkCallbackInner router={router} />;
 }
