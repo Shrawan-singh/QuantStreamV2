@@ -15,6 +15,7 @@
  */
 
 import "./globals.css";
+import { ClerkProvider } from '@clerk/nextjs';
 
 /**
  * METADATA:
@@ -28,7 +29,8 @@ export const metadata = {
 
 /**
  * RootLayout Component:
- * Wraps all visual components inside standard <html> and <body> tags.
+ * Wraps all visual components inside standard <html> and <body> tags,
+ * and provides Clerk authentication context to the entire application.
  *
  * Notice the Google Font `<link>` tag in `<head>`:
  * It downloads "Material Symbols Outlined", which gives our trading dashboard
@@ -37,16 +39,17 @@ export const metadata = {
  */
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
-        />
-      </head>
-      <body>{children}</body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+          />
+        </head>
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }
-
