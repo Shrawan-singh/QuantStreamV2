@@ -1,537 +1,286 @@
-'use client';
-
-/**
- * ==============================================================================
- * Main Dashboard Page (frontend/src/app/page.js)
- * ==============================================================================
- *
- * WHAT IS THIS FILE FOR? (Plain English):
- * This is the "Cockpit" of the entire QuantStream web application!
- * Whenever you open the website, Next.js loads this file first.
- *
- * WHAT DOES THIS FILE DO?
- * 1. Hooks into our live WebSocket (`useQuantStreamWebSocket`) to listen for
- *    real-time stock price ticks streaming from the backend.
- * 2. Manages Navigation Tabs:
- *    - DASHBOARD: High-level overview, market breadth, spotlight stock & chart
- *    - SCANNER: High-density spreadsheet/table of all 50-240 tracked stocks
- *    - STOCK_DETAIL: Deep dive into a single stock's indicators (RSI, SMA, EMA, RVOL)
- *    - WATCHLIST: User's customized list of favorite companies
- *    - ALERTS: Set up threshold alerts (e.g., "Tell me if Apple goes over $200")
- *    - ENGINE: Live system metrics (Kafka latency, queue capacity, worker threads)
- * 3. Calculates Market Breadth:
- *    - How many stocks are green (advancing) vs red (declining)?
- *    - What is the average Conviction Score across the whole market?
- *
- * WHAT DOES 'use client' MEAN AT LINE 1?
- * In Next.js, code can run either on the server or inside the user's browser.
- * Adding `'use client'` tells Next.js: "This code needs to run inside the user's
- * web browser so it can listen to clicks, open WebSockets, and update the screen!"
- * ==============================================================================
- */
-
-import React, { useState, useMemo, useEffect } from 'react';
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
-import MarketModeSelector from '../components/MarketModeSelector';
-import MarketOverviewGrid from '../components/MarketOverviewGrid';
-import ConvictionScoreGauge from '../components/ConvictionScoreGauge';
-import InteractiveChart from '../components/InteractiveChart';
-import ScannerTable from '../components/ScannerTable';
-import WatchlistManager from '../components/WatchlistManager';
-import AlertsManager from '../components/AlertsManager';
-import EngineHealthView from '../components/EngineHealthView';
-import { useQuantStreamWebSocket } from '../lib/useQuantStreamWebSocket';
-import { isUsEquityStock, currencySymbol, exchangeBadge } from '../lib/marketUtils';
+import Link from 'next/link'
 import {
-  TrendingUp,
-  TrendingDown,
-  Layers,
   Activity,
   ArrowRight,
-} from 'lucide-react';
+  ArrowUpRight,
+  BarChart3,
+  Bell,
+  Bookmark,
+  Database,
+  Layers,
+  Radio,
+  ShieldCheck,
+} from 'lucide-react'
+import LaunchLink from './LaunchLink'
+import styles from './landing.module.css'
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   Pipeline Architecture Steps Strip:
-   Explains to the user visually how data travels through QuantStream:
-   Tick Ingestion -> Kafka/Buffer -> Indicator Math -> 4-Factor Scoring -> Screen
-   ───────────────────────────────────────────────────────────────────────────── */
-const PIPELINE_STEPS = [
-  { num: '01', name: 'CAPTURE',   desc: 'Low-latency tick ingestion',    icon: 'cloud_download' },
-  { num: '02', name: 'STREAM',    desc: 'WebSocket buffer & Kafka',      icon: 'stream' },
-  { num: '03', name: 'ANALYZE',   desc: 'RSI, SMA, EMA, Momentum',      icon: 'analytics' },
-  { num: '04', name: 'INTERPRET', desc: '4-Factor conviction scoring',   icon: 'psychology' },
-  { num: '05', name: 'VISUALIZE', desc: 'Real-time terminal output',     icon: 'query_stats' },
-];
+const pipeline = [
+  { name: 'CAPTURE', description: 'Low-latency tick ingestion' },
+  { name: 'STREAM', description: 'WebSocket buffer & Kafka' },
+  { name: 'ANALYZE', description: 'RSI, SMA, EMA, Momentum' },
+  { name: 'INTERPRET', description: '4-Factor conviction scoring' },
+  { name: 'VISUALIZE', description: 'Real-time terminal output' },
+]
 
-// Fallback curated popular stocks shown when a user hasn't created a custom watchlist yet
-const CURATED_NSE_SYMBOLS = new Set([
-  'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
-  'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'TATAMOTORS',
-]);
+const features = [
+  {
+    icon: Radio,
+    number: '01',
+    title: 'Real-Time Market Streaming',
+    description: 'A responsive stream pipeline built to move market ticks from ingestion to the screen with bounded concurrency.',
+  },
+  {
+    icon: BarChart3,
+    number: '02',
+    title: 'Multi-Signal Analysis',
+    description: 'Technical context from trend, RSI, momentum, and relative volume, calculated as the stream advances.',
+  },
+  {
+    icon: Activity,
+    number: '03',
+    title: 'Conviction Scoring',
+    description: 'An explainable 4-factor score that brings multiple indicators into one decision-support view.',
+  },
+  {
+    icon: Bell,
+    number: '04',
+    title: 'Alerts & Watchlists',
+    description: 'Keep tracked instruments and threshold alerts close to the same live analytical workflow.',
+  },
+]
 
-const CURATED_US_SYMBOLS = new Set([
-  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AVGO', 'JPM', 'LLY',
-]);
+const scoreInputs = ['Trend', 'RSI', 'Momentum', 'Relative volume']
 
-export default function Home() {
-  // Connect to the backend WebSocket stream via our custom hook
-  const {
-    marketData,
-    connectionStatus,
-    totalTicksReceived,
-    lastTickTime,
-    latestAlertEvent,
-    marketConfig,
-    apiBase,
-  } = useQuantStreamWebSocket();
-
-  // --- STATE (Memory for user actions) ---
-  // Which tab is currently selected in the menu? (Default is DASHBOARD)
-  const [activeTab, setActiveTab] = useState('DASHBOARD');
-  // Which specific stock did the user click on to inspect?
-  const [selectedSymbol, setSelectedSymbol] = useState(null);
-  // Is the mobile sidebar drawer open or collapsed?
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // List of symbols the user saved to their personal database watchlist
-  const [watchlistSymbols, setWatchlistSymbols] = useState([]);
-  // Filter for dashboard cards: 'ALL' (all 200+ stocks), 'LEADERS' (top 10), or 'WATCHLIST'
-  const [dashboardFilter, setDashboardFilter] = useState('ALL');
-
-  // Transform our marketData object { AAPL: {...}, TSLA: {...} } into an easy array [ {...}, {...} ]
-  // `useMemo` caches this result so we don't waste CPU cycles re-doing it unnecessarily!
-  const stocks = useMemo(() => Object.values(marketData || {}), [marketData]);
-
-  // Load user's watchlist from PostgreSQL database when the page loads
-  useEffect(() => {
-    let mounted = true;
-    async function loadWatchlist() {
-      try {
-        const res = await fetch(`${apiBase || 'http://localhost:8080'}/api/watchlist`);
-        if (res.ok) {
-          const list = await res.json();
-          if (mounted && Array.isArray(list) && list.length > 0) {
-            setWatchlistSymbols(list.map((item) => item.symbol.toUpperCase()));
-          }
-        }
-      } catch (err) {
-        // Fallback silently to default curated symbols if database isn't ready
-      }
-    }
-    loadWatchlist();
-    return () => {
-      mounted = false;
-    };
-  }, [apiBase, activeTab]);
-
-  // Determine which stock cards to showcase on the top grid of the Dashboard
-  const displayedStocks = useMemo(() => {
-    if (dashboardFilter === 'WATCHLIST') {
-      const filtered = stocks.filter((s) => watchlistSymbols.includes(s.symbol?.toUpperCase()));
-      return filtered.length > 0 ? filtered : stocks;
-    }
-    if (dashboardFilter === 'LEADERS') {
-      const leaderSet = marketConfig?.mode === 'live' ? CURATED_US_SYMBOLS : CURATED_NSE_SYMBOLS;
-      const filtered = stocks.filter((s) => leaderSet.has(s.symbol?.toUpperCase()));
-      return filtered.length > 0 ? filtered : stocks.slice(0, 10);
-    }
-    // Default 'ALL': Show the entire 200+ stock universe!
-    return stocks.length > 0 ? stocks : [];
-  }, [stocks, dashboardFilter, watchlistSymbols, marketConfig?.mode]);
-
-  // Find the exact data for the active spotlight stock
-  const activeStock = useMemo(() => {
-    if (selectedSymbol && marketData[selectedSymbol]) return marketData[selectedSymbol];
-    return stocks[0] || null;
-  }, [selectedSymbol, marketData, stocks]);
-
-  const isUsEquity = isUsEquityStock(activeStock, marketConfig);
-  const currSym = currencySymbol(activeStock, marketConfig);
-  const exchBadge = exchangeBadge(activeStock, marketConfig);
-
-  // MARKET BREADTH: A classic Wall Street indicator!
-  // Counts how many stocks are advancing (gaining value) vs declining (losing value)
-  const advancing = stocks.filter((s) => (s.priceChangePercent ?? 0) > 0).length;
-  const declining = stocks.filter((s) => (s.priceChangePercent ?? 0) < 0).length;
-  // Calculate average conviction across the entire tracked universe
-  const avgScore =
-    stocks.length > 0
-      ? stocks.reduce((acc, curr) => acc + (curr.convictionScore ?? 50), 0) / stocks.length
-      : 50.0;
-
-  // Helper function to color-code signal badges (Green for Positive, Red for Negative)
-  const getSignalBadge = (sig) => {
-    switch (sig) {
-      case 'POSITIVE':  return { color: 'var(--bullish)', bg: 'var(--bullish-bg)', label: 'POSITIVE' };
-      case 'NEGATIVE':  return { color: 'var(--bearish)', bg: 'var(--bearish-bg)', label: 'NEGATIVE' };
-      case 'NOT_READY': return { color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.05)', label: 'WARM-UP' };
-      default:          return { color: 'var(--neutral)', bg: 'var(--neutral-bg)', label: 'NEUTRAL' };
-    }
-  };
-
+export default function LandingPage() {
   return (
-    <div className="app-shell">
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div className={`${styles.container} ${styles.navbar}`}>
+          <Link className={styles.brand} href="/" aria-label="QuantStream home">
+            <span className={styles.brandMark} aria-hidden="true"><Activity size={20} /></span>
+            <span className={styles.brandName}>QUANT<span>STREAM</span></span>
+          </Link>
 
-      {/* ──── Sidebar ──── */}
-      <Sidebar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        connectionStatus={connectionStatus}
-        totalTicks={totalTicksReceived}
-        marketConfig={marketConfig}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+          <nav className={styles.navLinks} aria-label="Main navigation">
+            <a href="#pipeline">Pipeline</a>
+            <a href="#conviction">Conviction</a>
+            <a href="#platform">Platform</a>
+          </nav>
 
-      {/* ──── Main Content ──── */}
-      <div className="main-content">
-        <Header
-          connectionStatus={connectionStatus}
-          totalTicks={totalTicksReceived}
-          marketConfig={marketConfig}
-          allInstruments={stocks}
-          apiBase={apiBase}
-          onSelectSymbol={setSelectedSymbol}
-          onSelectTab={setActiveTab}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        />
-
-        <main className="page-body page-body--dashboard">
-          {/* ═══ TAB: DASHBOARD ═══ */}
-          {activeTab === 'DASHBOARD' && (
-            <div className="flex-col gap-xl">
-              {/* Market Mode Selector */}
-              <MarketModeSelector
-                marketConfig={marketConfig}
-                connectionStatus={connectionStatus}
-                trackedCount={stocks.length}
-              />
-
-              {/* Pipeline Architecture Strip */}
-              <div className="terminal-panel p-lg mb-lg pipeline-panel">
-                <div className="label-caps mb-sm">QUANTSTREAM PIPELINE ARCHITECTURE</div>
-                <div className="pipeline-strip">
-                  {PIPELINE_STEPS.map((step) => (
-                    <div className="pipeline-step" key={step.num}>
-                      <div className="flex-row items-center justify-between">
-                        <span className="pipeline-step-num">{step.num}</span>
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--text-muted)' }}>
-                          {step.icon}
-                        </span>
-                      </div>
-                      <span className="pipeline-step-name">{step.name}</span>
-                      <span className="pipeline-step-desc">{step.desc}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Market Pulse Summary */}
-              <div className="grid-auto grid-auto-fill-sm mb-xl market-summary-grid">
-                <div className="stat-card">
-                  <div className="stat-card-label">MARKET BREADTH</div>
-                  <div className="flex-row items-center gap-md">
-                    <span className="flex-row items-center gap-xs text-bullish font-bold" style={{ fontSize: '0.92rem' }}>
-                      <TrendingUp size={15} /> {advancing} Adv
-                    </span>
-                    <span className="flex-row items-center gap-xs text-bearish font-bold" style={{ fontSize: '0.92rem' }}>
-                      <TrendingDown size={15} /> {declining} Dec
-                    </span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <div className="stat-card-label">AVG CONVICTION</div>
-                  <div className="stat-card-value text-accent">
-                    {avgScore.toFixed(1)} <span className="text-muted" style={{ fontSize: '0.7rem' }}>/ 100</span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <div className="stat-card-label">STREAM TOPOLOGY</div>
-                  <div className="flex-row items-center gap-sm font-bold" style={{ fontSize: '0.88rem' }}>
-                    <Layers size={15} color="var(--accent-indigo)" />
-                    <span>Kafka → Queue → 4 Workers</span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <div className="stat-card-label">DATA SOURCE</div>
-                  <div className="flex-row items-center gap-sm font-bold" style={{ fontSize: '0.8rem', color: marketConfig?.mode === 'live' ? 'var(--bullish)' : 'var(--neutral)' }}>
-                    <Activity size={14} />
-                    <span>{marketConfig?.mode === 'live' ? 'LIVE MARKET • US EQUITIES' : 'SIMULATION • NSE EQUITIES'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Market Overview Grid */}
-              <div className="flex-row items-center justify-between mb-base flex-wrap gap-sm">
-                <div className="flex-col">
-                  <div className="flex-row items-center gap-sm flex-wrap">
-                    <h3 className="section-title" style={{ margin: 0 }}>
-                      MARKET OVERVIEW ({displayedStocks.length})
-                    </h3>
-                    <div className="flex-row items-center gap-xs" style={{ background: 'var(--bg-card)', padding: '2px 4px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-                      <button
-                        className={`btn-ghost ${dashboardFilter === 'ALL' ? 'text-accent font-bold' : 'text-muted'}`}
-                        style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: dashboardFilter === 'ALL' ? 'var(--bg-card-hover)' : 'transparent' }}
-                        onClick={() => setDashboardFilter('ALL')}
-                      >
-                        All Stocks ({stocks.length})
-                      </button>
-                      <button
-                        className={`btn-ghost ${dashboardFilter === 'LEADERS' ? 'text-accent font-bold' : 'text-muted'}`}
-                        style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: dashboardFilter === 'LEADERS' ? 'var(--bg-card-hover)' : 'transparent' }}
-                        onClick={() => setDashboardFilter('LEADERS')}
-                      >
-                        Top Leaders (10)
-                      </button>
-                      {watchlistSymbols.length > 0 && (
-                        <button
-                          className={`btn-ghost ${dashboardFilter === 'WATCHLIST' ? 'text-accent font-bold' : 'text-muted'}`}
-                          style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: dashboardFilter === 'WATCHLIST' ? 'var(--bg-card-hover)' : 'transparent' }}
-                          onClick={() => setDashboardFilter('WATCHLIST')}
-                        >
-                          Watchlist ({watchlistSymbols.length})
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <span className="section-subtitle" style={{ marginTop: '2px' }}>
-                    {dashboardFilter === 'ALL'
-                      ? `Streaming real-time order ticks across the complete universe of ${stocks.length} equities`
-                      : dashboardFilter === 'LEADERS'
-                      ? 'Curated high-liquidity market leaders — click any instrument to inspect'
-                      : 'Live overview of your tracked personal watchlist symbols'}
-                  </span>
-                </div>
-                <button
-                  className="btn-ghost flex-row items-center gap-xs text-accent font-bold"
-                  onClick={() => setActiveTab('SCANNER')}
-                  style={{ fontSize: '0.78rem' }}
-                >
-                  View all in Scanner <ArrowRight size={13} />
-                </button>
-              </div>
-
-              <MarketOverviewGrid
-                stocks={displayedStocks}
-                selectedSymbol={activeStock?.symbol}
-                marketConfig={marketConfig}
-                onSelectSymbol={setSelectedSymbol}
-                onDrillDown={(sym) => {
-                  setSelectedSymbol(sym);
-                  setActiveTab('STOCK_DETAIL');
-                }}
-              />
-
-              {/* Active Instrument Spotlight */}
-              {activeStock && (
-                <div className="mt-xl">
-                  <div className="flex-row items-center justify-between mb-base">
-                    <h3 className="section-title">
-                      SPOTLIGHT: <span className="text-accent">{activeStock.symbol}</span>
-                    </h3>
-                    <button
-                      className="btn-ghost flex-row items-center gap-xs text-accent font-bold"
-                      onClick={() => setActiveTab('STOCK_DETAIL')}
-                      style={{ fontSize: '0.8rem' }}
-                    >
-                      Full Analysis <ArrowRight size={14} />
-                    </button>
-                  </div>
-
-                  <div className="grid-auto grid-auto-fit-xl">
-                    <InteractiveChart
-                      symbol={activeStock.symbol}
-                      currentPrice={activeStock.price}
-                      currentSma={activeStock.sma}
-                      apiBase={apiBase}
-                      isUsEquity={isUsEquity}
-                    />
-                    <ConvictionScoreGauge snapshot={activeStock} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ═══ TAB: SCANNER ═══ */}
-          {activeTab === 'SCANNER' && (
-            <ScannerTable
-              marketData={marketData}
-              onSelectSymbol={(sym) => {
-                setSelectedSymbol(sym);
-                setActiveTab('STOCK_DETAIL');
-              }}
-              selectedSymbol={selectedSymbol}
-              marketConfig={marketConfig}
-              apiBase={apiBase}
-            />
-          )}
-
-          {/* ═══ TAB: STOCK DETAIL ═══ */}
-          {activeTab === 'STOCK_DETAIL' && activeStock && (
-            <div className="flex-col gap-xl">
-              {/* Instrument Header */}
-              <div className="terminal-panel p-xl">
-                <div className="flex-row justify-between items-start flex-wrap gap-base">
-                  <div>
-                    <div className="flex-row items-center gap-md">
-                      <h1 style={{ fontSize: '2rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
-                        {activeStock.symbol}
-                      </h1>
-                      <span className="badge-exchange">{exchBadge}</span>
-                      <span className={`badge badge-pill ${activeStock.source === 'LIVE_PROVIDER' ? 'badge-bullish' : 'badge-neutral'}`}>
-                        {activeStock.source === 'LIVE_PROVIDER' ? 'LIVE MARKET STREAM' : 'SIMULATION FEED'}
-                      </span>
-                    </div>
-                    <p className="text-secondary mt-sm" style={{ fontSize: '0.88rem' }}>
-                      {activeStock.companyName}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="mono" style={{ fontSize: '2.4rem', fontWeight: 800, lineHeight: 1 }}>
-                      {currSym}{activeStock.price != null ? Number(activeStock.price).toFixed(2) : '--'}
-                    </div>
-                    <div
-                      className="mono mt-sm"
-                      style={{
-                        fontSize: '0.95rem',
-                        fontWeight: 700,
-                        color: (activeStock.priceChangePercent ?? 0) >= 0 ? 'var(--bullish)' : 'var(--bearish)',
-                      }}
-                    >
-                      {(activeStock.priceChangePercent ?? 0) >= 0 ? '+' : ''}
-                      {activeStock.priceChange != null ? Number(activeStock.priceChange).toFixed(2) : '0.00'} (
-                      {(activeStock.priceChangePercent ?? 0) >= 0 ? '+' : ''}
-                      {activeStock.priceChangePercent != null ? activeStock.priceChangePercent.toFixed(2) : '0.00'}%)
-                    </div>
-                  </div>
-                </div>
-
-                {/* Session Quick Stats */}
-                <hr className="separator" />
-                <div className="grid-auto grid-metrics" style={{ fontSize: '0.8rem' }}>
-                  <div>
-                    <div className="text-muted">SESSION OPEN</div>
-                    <div className="mono font-bold mt-sm">
-                      {currSym}{activeStock.openPrice != null ? Number(activeStock.openPrice).toFixed(2) : (activeStock.prevClose != null ? Number(activeStock.prevClose).toFixed(2) : (activeStock.price != null ? (activeStock.price * 0.996).toFixed(2) : '0.00'))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted">SESSION HIGH</div>
-                    <div className="mono font-bold text-bullish mt-sm">
-                      {currSym}{activeStock.highPrice != null ? Number(activeStock.highPrice).toFixed(2) : (activeStock.price != null ? (Math.max(activeStock.price, (activeStock.prevClose || activeStock.price)) * 1.006).toFixed(2) : '0.00')}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted">SESSION LOW</div>
-                    <div className="mono font-bold text-bearish mt-sm">
-                      {currSym}{activeStock.lowPrice != null ? Number(activeStock.lowPrice).toFixed(2) : (activeStock.price != null ? (Math.min(activeStock.price, (activeStock.prevClose || activeStock.price)) * 0.994).toFixed(2) : '0.00')}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted">CUM. VOLUME</div>
-                    <div className="mono font-bold mt-sm">
-                      {activeStock.cumulativeVolume?.toLocaleString() || activeStock.volume?.toLocaleString() || '1,240,500'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Chart & Conviction Split */}
-              <div className="grid-auto grid-auto-fit-xl">
-                <InteractiveChart
-                  symbol={activeStock.symbol}
-                  currentPrice={activeStock.price}
-                  currentSma={activeStock.sma}
-                  apiBase={apiBase}
-                  isUsEquity={isUsEquity}
-                />
-                <ConvictionScoreGauge snapshot={activeStock} />
-              </div>
-
-              {/* Technical Indicators */}
-              <div className="terminal-panel p-xl">
-                <div className="mb-base">
-                  <h3 className="section-title">TECHNICAL INDICATOR SNAPSHOT</h3>
-                  <p className="section-subtitle">Rolling mathematical state — O(1) time complexity</p>
-                </div>
-
-                <div className="grid-auto grid-metrics">
-                  {/* SMA */}
-                  <div className="metric-block">
-                    <div className="metric-label">20-PERIOD SMA</div>
-                    <div className="metric-value">{currSym}{activeStock.sma ? activeStock.sma.toFixed(2) : '--'}</div>
-                    {(() => { const b = getSignalBadge(activeStock.signals?.trend); return <span className="badge" style={{ background: b.bg, color: b.color }}>{b.label}</span>; })()}
-                  </div>
-
-                  {/* EMA */}
-                  <div className="metric-block">
-                    <div className="metric-label">20-PERIOD EMA</div>
-                    <div className="metric-value">{currSym}{activeStock.ema ? activeStock.ema.toFixed(2) : '--'}</div>
-                    <span className="text-secondary" style={{ fontSize: '0.65rem', fontWeight: 700 }}>EXPONENTIAL</span>
-                  </div>
-
-                  {/* RSI */}
-                  <div className="metric-block">
-                    <div className="metric-label">14-PERIOD RSI</div>
-                    <div className="metric-value">{activeStock.rsi ? activeStock.rsi.toFixed(1) : '--'}</div>
-                    {(() => { const b = getSignalBadge(activeStock.signals?.rsi); return <span className="badge" style={{ background: b.bg, color: b.color }}>{b.label}</span>; })()}
-                  </div>
-
-                  {/* Momentum */}
-                  <div className="metric-block">
-                    <div className="metric-label">10-P MOMENTUM</div>
-                    <div className="metric-value">{activeStock.momentum != null ? `${activeStock.momentum > 0 ? '+' : ''}${activeStock.momentum.toFixed(2)}%` : '--'}</div>
-                    {(() => { const b = getSignalBadge(activeStock.signals?.momentum); return <span className="badge" style={{ background: b.bg, color: b.color }}>{b.label}</span>; })()}
-                  </div>
-
-                  {/* RVOL */}
-                  <div className="metric-block">
-                    <div className="metric-label">RELATIVE VOLUME</div>
-                    <div className="metric-value">{activeStock.relativeVolume ? `${activeStock.relativeVolume.toFixed(2)}x` : '--'}</div>
-                    {(() => { const b = getSignalBadge(activeStock.signals?.volume); return <span className="badge" style={{ background: b.bg, color: b.color }}>{b.label}</span>; })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ═══ TAB: WATCHLIST ═══ */}
-          {activeTab === 'WATCHLIST' && (
-            <WatchlistManager
-              apiBase={apiBase}
-              marketConfig={marketConfig}
-              onSelectSymbol={(sym) => {
-                setSelectedSymbol(sym);
-                setActiveTab('STOCK_DETAIL');
-              }}
-              currentMarketData={marketData}
-            />
-          )}
-
-          {/* ═══ TAB: ALERTS ═══ */}
-          {activeTab === 'ALERTS' && <AlertsManager apiBase={apiBase} latestAlertEvent={latestAlertEvent} />}
-
-          {/* ═══ TAB: ENGINE HEALTH ═══ */}
-          {activeTab === 'ENGINE' && <EngineHealthView apiBase={apiBase} />}
-        </main>
-
-        {/* Footer */}
-        <footer className="app-footer">
-          <div style={{ maxWidth: '840px', margin: '0 auto' }}>
-            <p>
-              <strong>Academic Decision-Support Disclaimer:</strong> QuantStream is a real-time quantitative streaming
-              analytics engine. All conviction scores, trend classifications, momentum metrics, and relative volume
-              indications are computed algorithmically for educational decision-support evaluation and do not constitute
-              financial advice or automated trade execution.
-            </p>
+          <div className={styles.navActions}>
+            <Link className={styles.navSignIn} href="/sign-in">Sign In</Link>
+            <Link className={styles.navGetStarted} href="/sign-up">
+              Get Started <ArrowUpRight size={15} aria-hidden="true" />
+            </Link>
           </div>
-        </footer>
-      </div>
-    </div>
-  );
+        </div>
+      </header>
+
+      <section className={`${styles.container} ${styles.hero}`}>
+        <div className={styles.heroCopy}>
+          <p className={styles.eyebrow}><span /> MARKET INTELLIGENCE, IN MOTION</p>
+          <h1>FROM DATA<br /><span>TO DECISION.</span></h1>
+          <p className={styles.heroLead}>
+            Real-time market intelligence that transforms streaming market data into actionable conviction.
+          </p>
+          <div className={styles.heroActions}>
+            <Link className={styles.primaryButton} href="/sign-up">
+              Get Started <ArrowRight size={17} aria-hidden="true" />
+            </Link>
+            <Link className={styles.secondaryButton} href="/sign-in">Sign In</Link>
+          </div>
+          <div className={styles.heroMeta}>
+            <span><i className={styles.metaDot} /> STREAM-READY ARCHITECTURE</span>
+            <span className={styles.metaDivider} />
+            <span>BUILT FOR CLARITY UNDER LOAD</span>
+          </div>
+        </div>
+
+        <div className={styles.heroVisual} aria-label="Illustrative QuantStream signal processing diagram">
+          <div className={styles.visualHeader}>
+            <span>QS / SIGNAL ARCHITECTURE</span>
+            <span className={styles.visualIndex}>FIG. 01</span>
+          </div>
+          <div className={styles.flowDiagram}>
+            <div className={styles.flowLine} aria-hidden="true" />
+            <div className={styles.flowNode}>
+              <span className={styles.nodeIcon}><Database size={19} /></span>
+              <span className={styles.nodeTitle}>MARKET DATA</span>
+              <span className={styles.nodeNote}>STREAM INPUT</span>
+            </div>
+            <div className={`${styles.flowNode} ${styles.flowNodeActive}`}>
+              <span className={styles.nodeIcon}><Layers size={19} /></span>
+              <span className={styles.nodeTitle}>SIGNAL ENGINE</span>
+              <span className={styles.nodeNote}>4-FACTOR MODEL</span>
+            </div>
+            <div className={styles.flowNode}>
+              <span className={styles.nodeIcon}><ShieldCheck size={19} /></span>
+              <span className={styles.nodeTitle}>DECISION VIEW</span>
+              <span className={styles.nodeNote}>CLEAR CONTEXT</span>
+            </div>
+          </div>
+          <div className={styles.visualFooter}>
+            <span>INGEST</span><span>PROCESS</span><span>INTERPRET</span>
+          </div>
+          <div className={styles.visualStamp}>SYSTEM OVERVIEW <b>ILLUSTRATIVE</b></div>
+        </div>
+      </section>
+
+      <section className={styles.pipelineSection} id="pipeline">
+        <div className={styles.container}>
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.sectionKicker}>01 / THE PIPELINE</p>
+              <h2>From tick to <span>context.</span></h2>
+            </div>
+            <p className={styles.sectionIntro}>A clear path from market events to decision-ready market intelligence.</p>
+          </div>
+          <div className={styles.pipeline}>
+            {pipeline.map((step, index) => (
+              <div className={styles.pipelineStep} key={step.name}>
+                <span className={styles.pipelineNumber}>0{index + 1}</span>
+                <span className={styles.pipelineName}>{step.name}</span>
+                <span className={styles.pipelineDescription}>{step.description}</span>
+                {index < pipeline.length - 1 && <ArrowRight className={styles.pipelineArrow} size={16} aria-hidden="true" />}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={`${styles.container} ${styles.convictionSection}`} id="conviction">
+        <div className={styles.convictionCopy}>
+          <p className={styles.sectionKicker}>02 / THE CONVICTION SCORE</p>
+          <h2>One score.<br /><span>Multiple signals.</span><br />Clearer context.</h2>
+          <p>
+            QuantStream brings trend, momentum, relative volume, and RSI into an explainable scoring model. The result is a consistent analytical reference, not a substitute for judgment.
+          </p>
+          <div className={styles.modelNote}><ShieldCheck size={17} /> DECISION SUPPORT, NOT TRADE EXECUTION</div>
+        </div>
+        <div className={styles.scoreGraphic}>
+          <div className={styles.scoreGraphicHeader}>
+            <span>MODEL COMPOSITION</span>
+            <span>ILLUSTRATIVE · NO LIVE VALUES</span>
+          </div>
+          <div className={styles.scoreDiagram}>
+            <div className={styles.inputStack}>
+              {scoreInputs.map((input, index) => (
+                <div className={styles.scoreInput} key={input}>
+                  <span className={`${styles.inputMarker} ${index === 1 ? styles.markerAmber : ''}`} />
+                  <span>{input}</span>
+                  <small>INPUT</small>
+                </div>
+              ))}
+            </div>
+            <div className={styles.scoreConnector} aria-hidden="true"><span /><span /><span /><span /></div>
+            <div className={styles.scoreOutput}>
+              <span className={styles.outputLabel}>CONVICTION</span>
+              <strong>0–100</strong>
+              <span className={styles.outputCaption}>CONTEXTUAL RANGE</span>
+            </div>
+          </div>
+          <div className={styles.scoreGraphicFooter}>
+            <span>4 SIGNAL FAMILIES</span><span>ONE EXPLAINABLE VIEW</span>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.featureSection} id="platform">
+        <div className={styles.container}>
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.sectionKicker}>03 / THE PLATFORM</p>
+              <h2>Built around the <span>signal.</span></h2>
+            </div>
+            <p className={styles.sectionIntro}>A focused toolset for following the stream, understanding the model, and acting with context.</p>
+          </div>
+          <div className={styles.featureGrid}>
+            {features.map(({ icon: Icon, number, title, description }) => (
+              <article className={styles.feature} key={number}>
+                <div className={styles.featureTop}>
+                  <span className={styles.featureIcon}><Icon size={19} strokeWidth={1.7} /></span>
+                  <span className={styles.featureNumber}>{number}</span>
+                </div>
+                <h3>{title}</h3>
+                <p>{description}</p>
+                <span className={styles.featureRule} />
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={`${styles.container} ${styles.previewSection}`}>
+        <div className={styles.sectionHeading}>
+          <div>
+            <p className={styles.sectionKicker}>04 / THE WORKSPACE</p>
+            <h2>Built for the <span>whole picture.</span></h2>
+          </div>
+          <p className={styles.sectionIntro}>One terminal for market overview, instrument analysis, alerts, and engine health.</p>
+        </div>
+
+        <div className={styles.previewShell}>
+          <div className={styles.previewTopbar}>
+            <div className={styles.previewBrand}><span><Activity size={15} /></span> QUANTSTREAM <i>/</i> MARKET OVERVIEW</div>
+            <span className={styles.previewBadge}>STATIC PRODUCT PREVIEW · NOT LIVE</span>
+          </div>
+          <div className={styles.previewBody}>
+            <aside className={styles.previewRail} aria-label="Preview navigation">
+              <span className={styles.railActive}><Activity size={16} /></span>
+              <span><BarChart3 size={16} /></span>
+              <span><Bookmark size={16} /></span>
+              <span><Bell size={16} /></span>
+            </aside>
+            <div className={styles.previewMain}>
+              <div className={styles.previewTitleRow}>
+                <div><span className={styles.previewOverline}>WORKSPACE / 01</span><h3>Market overview</h3></div>
+                <span className={styles.previewOffline}><i /> NO LIVE FEED</span>
+              </div>
+              <div className={styles.previewMetrics}>
+                {['MARKET BREADTH', 'AVG CONVICTION', 'STREAM STATUS'].map((label) => (
+                  <div className={styles.previewMetric} key={label}>
+                    <span>{label}</span><strong>—</strong><small>AWAITING DATA</small>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.previewLower}>
+                <div className={styles.previewChart}>
+                  <div className={styles.previewChartHeader}><span>INSTRUMENT STREAM</span><span>PREVIEW</span></div>
+                  <div className={styles.chartEmpty}><span className={styles.chartCrosshair}>+</span><span>Market data appears here when connected</span></div>
+                  <div className={styles.chartAxis}><span>PRICE</span><span>TIME →</span></div>
+                </div>
+                <div className={styles.previewSignals}>
+                  <span className={styles.previewChartHeader}>SIGNAL CONTEXT</span>
+                  {['TREND', 'RSI', 'MOMENTUM', 'VOLUME'].map((label) => (
+                    <div className={styles.previewSignalRow} key={label}><span>{label}</span><i /> <small>—</small></div>
+                  ))}
+                  <p>No market values shown in this preview.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className={styles.previewCaption}><span /> PRODUCT PREVIEW · DATA VALUES INTENTIONALLY OMITTED</p>
+      </section>
+
+      <section className={styles.finalSection}>
+        <div className={`${styles.container} ${styles.finalInner}`}>
+          <div>
+            <p className={styles.sectionKicker}>QUANTSTREAM / READY WHEN YOU ARE</p>
+            <h2>Turn market data into a<br /><span>decision-ready signal.</span></h2>
+          </div>
+          <LaunchLink />
+        </div>
+      </section>
+
+      <footer className={`${styles.container} ${styles.footer}`}>
+        <Link className={styles.brand} href="/">
+          <span className={styles.brandMark} aria-hidden="true"><Activity size={17} /></span>
+          <span className={styles.brandName}>QUANT<span>STREAM</span></span>
+        </Link>
+        <p>REAL-TIME MARKET INTELLIGENCE</p>
+        <span className={styles.footerLegal}>ANALYTICS FOR DECISION SUPPORT</span>
+      </footer>
+    </main>
+  )
 }
