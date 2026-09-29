@@ -15,7 +15,7 @@
  */
 
 import "./globals.css";
-import { ClerkProvider } from '@clerk/nextjs';
+import { ClerkProvider } from "@clerk/nextjs";
 
 /**
  * METADATA:
@@ -24,7 +24,8 @@ import { ClerkProvider } from '@clerk/nextjs';
  */
 export const metadata = {
   title: "QuantStream — Real-Time Market Data Streaming & Quantitative Signal Engine",
-  description: "Real-time market data streaming pipeline, bounded concurrency, in-memory technical indicators, and explainable conviction scoring engine.",
+  description:
+    "Real-time market data streaming pipeline, bounded concurrency, in-memory technical indicators, and explainable conviction scoring engine.",
 };
 
 /**
@@ -32,24 +33,23 @@ export const metadata = {
  * Wraps all visual components inside standard <html> and <body> tags,
  * and provides Clerk authentication context to the entire application.
  *
- * Notice the Google Font `<link>` tag in `<head>`:
+ * Notice the Google Font <link> tag in <head>:
  * It downloads "Material Symbols Outlined", which gives our trading dashboard
- * sleek financial icons (candlestick charts, bells, server racks, speedometer gauges)
- * without needing slow-loading image files!
+ * sleek financial icons without needing slow-loading image files!
  */
 export default function RootLayout({ children }) {
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
-          />
-        </head>
-        <body>{children}</body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+        />
+      </head>
+      <body>
+        <ClerkProvider>{children}</ClerkProvider>
+      </body>
+    </html>
   );
 }
