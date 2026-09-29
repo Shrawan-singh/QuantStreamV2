@@ -13,9 +13,9 @@ if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
       '/api/engine(.*)',
     ]);
 
-    clerkHandler = clerkMiddleware((auth: any, req: any) => {
+    clerkHandler = clerkMiddleware(async (auth: any, req: any) => {
       if (isProtectedRoute(req)) {
-        auth().protect();
+        await auth.protect();
       }
     });
   } catch (e) {
@@ -23,7 +23,7 @@ if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
   }
 }
 
-export default function middleware(req: NextRequest, event: any) {
+export default async function middleware(req: NextRequest, event: any) {
   if (clerkHandler) {
     return clerkHandler(req, event);
   }

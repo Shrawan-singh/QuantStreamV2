@@ -13,9 +13,9 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
 
 function ClerkCallbackInner({ router }) {
-  const { useAuth } = require('@clerk/nextjs');
   const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
