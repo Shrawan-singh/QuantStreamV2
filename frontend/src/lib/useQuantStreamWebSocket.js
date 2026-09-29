@@ -5,25 +5,11 @@
  * Real-Time WebSocket Hook (frontend/src/lib/useQuantStreamWebSocket.js)
  * ==============================================================================
  *
- * WHAT IS THIS FILE FOR? (Plain English):
- * Imagine a high-speed stock trading floor. Instead of having to press "Refresh"
- * (F5) on your browser every second to see new prices, this file opens a direct,
- * permanent telephone line (a "WebSocket") between your web browser and the
- * Spring Boot backend server.
- *
- * Whenever a stock price changes on the server:
- * 1. The server blasts the new price down this open phone line.
- * 2. This hook catches it instantly.
- * 3. It checks: "Did the price go up or down since the last tick?"
- *    - If up: marks it green ('up') so the UI can flash green.
- *    - If down: marks it red ('down') so the UI can flash red.
- * 4. It notifies React, which smoothly updates the charts, tables, and gauges.
- *
- * WHAT IS A CUSTOM REACT HOOK?
- * In React, functions starting with `use...` are called "Hooks".
- * This hook packages all the complex networking, reconnecting, and error-handling
- * into one neat package so any visual component can simply call:
- *   const { marketData, connectionStatus } = useQuantStreamWebSocket();
+ * Provides real-time market data streaming across the 243-stock simulation universe.
+ * If a Spring Boot backend is connected, it streams live STOMP ticks over WebSockets.
+ * If in standalone simulation mode (or on Vercel before backend is linked),
+ * it runs a high-frequency (20-30 ticks/second) realistic order flow generator
+ * so the terminal is immediately alive with real-time ticks, price action, and charts.
  * ==============================================================================
  */
 
@@ -33,43 +19,48 @@ import SockJS from 'sockjs-client';
 import { FULL_SIMULATION_UNIVERSE } from './simulationUniverse';
 
 // The URL of our Spring Boot backend REST & WebSocket server.
-// Reads from environment variables (for Docker/production) or defaults to localhost:8080.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const WS_ENDPOINT = `${API_BASE}/ws`;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:8080' : '');
+const WS_ENDPOINT = API_BASE ? `${API_BASE}/ws` : '';
 
 export function useQuantStreamWebSocket() {
-  // --- REACT STATE VARIABLES (Things that make the UI re-render when they change) ---
-  
-  // A dictionary/map of all stocks: { "AAPL": { price: 182.5, sma20: 180.1, ... }, "NVDA": { ... } }
-  const [marketData, setMarketData] = useState({});
-  
-  // Connection status indicator: 'CONNECTING', 'CONNECTED', or 'DISCONNECTED'
-  const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
-  
-  // Timestamp of the very last price tick received (for showing "Last tick: 2s ago")
-  const [lastTickTime, setLastTickTime] = useState(null);
-  
-  // Total counter of all ticks processed since the page was opened
+  // Initialize marketData with all 243 instruments so the cockpit is fully populated on first frame
+  const [marketData, setMarketData] = useState(() => {
+    const initialMap = {};
+    FULL_SIMULATION_UNIVERSE.forEach((item) => {
+      initialMap[item.symbol] = {
+        ...item,
+        tickDirection: 'none',
+        lastUpdated: Date.now(),
+      };
+    });
+    return initialMap;
+  });
+
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTED');
+  const [lastTickTime, setLastTickTime] = useState(() => new Date());
   const [totalTicksReceived, setTotalTicksReceived] = useState(0);
-  
-  // Market mode: 'simulation' (NSE Indian equities) or 'live' (Finnhub US equities)
+
   const [marketConfig, setMarketConfig] = useState({
     mode: 'simulation',
     provider: 'finnhub',
-    status: 'ACTIVE'
+    status: 'ACTIVE',
   });
-  
-  // The most recent trading alert event (e.g., "RSI Overbought on RELIANCE")
+
   const [latestAlertEvent, setLatestAlertEvent] = useState(null);
 
-  // --- REFS (Variables that store data without triggering screen re-renders) ---
   const clientRef = useRef(null);
-  // Keeps track of the last known price for each symbol so we can calculate up/down flash
   const lastPricesRef = useRef({});
+  const isBackendConnectedRef = useRef(false);
+
+  // Initialize lastPricesRef
+  useEffect(() => {
+    FULL_SIMULATION_UNIVERSE.forEach((item) => {
+      lastPricesRef.current[item.symbol] = item.price;
+    });
+  }, []);
 
   /**
-   * Processes a single stock price snapshot received from the server.
-   * Compares the new price against the old price to determine whether to flash GREEN or RED.
+   * Processes an incoming price snapshot (from either live WebSocket or simulation engine).
    */
   const handleIncomingSnapshot = useCallback((snapshot) => {
     if (!snapshot || !snapshot.symbol) return;
@@ -78,21 +69,19 @@ export function useQuantStreamWebSocket() {
     const prevPrice = lastPricesRef.current[sym];
     let tickDirection = 'none';
 
-    // Check price movement for visual UI flash animation
     if (prevPrice !== undefined && snapshot.price !== undefined) {
       if (Number(snapshot.price) > Number(prevPrice)) {
-        tickDirection = 'up';   // Price rose -> flash green
+        tickDirection = 'up';
       } else if (Number(snapshot.price) < Number(prevPrice)) {
-        tickDirection = 'down'; // Price fell -> flash red
+        tickDirection = 'down';
       }
     }
-    // Remember this price as the new baseline for next time
     lastPricesRef.current[sym] = snapshot.price;
 
-    // Merge this updated stock into our global marketData dictionary
     setMarketData((prev) => ({
       ...prev,
       [sym]: {
+        ...(prev[sym] || {}),
         ...snapshot,
         tickDirection,
         lastUpdated: Date.now(),
@@ -104,261 +93,148 @@ export function useQuantStreamWebSocket() {
   }, []);
 
   /**
-   * STEP 1: INITIAL DATA HYDRATION (REST API)
-   * Before WebSocket finishes connecting, we make a quick HTTP GET request to:
-   * 1. `/api/stocks`: Immediately fetch current prices so the dashboard isn't blank!
-   * 2. `/api/config`: Discover whether we are in Live or Simulation mode.
-   * 3. Set up a periodic health check every 10 seconds.
+   * HIGH-FREQUENCY REAL-TIME SIMULATION ENGINE (20 - 30 ticks/second)
+   * Streams continuous order fills, price changes, and indicator drift across all 243 stocks.
+   * Yields automatically when a real Spring Boot backend WebSocket is connected.
    */
   useEffect(() => {
-    let mounted = true;
-    async function fetchInitialData() {
-      try {
-        const [stocksRes, configRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/api/stocks`),
-          fetch(`${API_BASE}/api/config`)
-        ]);
+    const highVolumeSymbols = [
+      'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'TATAMOTORS', 'NVDA', 'AAPL',
+      'MSFT', 'TSLA', 'ICICIBANK', 'BHARTIARTL', 'SBIN', 'ITC', 'LT', 'MARUTI', 'BAJFINANCE'
+    ];
 
-        let hasData = false;
-        if (stocksRes.status === 'fulfilled' && stocksRes.value.ok) {
-          const list = await stocksRes.value.json();
-          if (mounted && Array.isArray(list) && list.length > 0) {
-            hasData = true;
-            const initialMap = {};
-            list.forEach((item) => {
-              initialMap[item.symbol.toUpperCase()] = {
-                ...item,
-                tickDirection: 'none',
-                lastUpdated: Date.now(),
-              };
-              lastPricesRef.current[item.symbol.toUpperCase()] = item.price;
-            });
-            setMarketData((prev) => ({ ...initialMap, ...prev }));
-          }
+    const simulationInterval = setInterval(() => {
+      // If live backend WebSocket is actively streaming, pause client-side simulation
+      if (isBackendConnectedRef.current) return;
+
+      // 2 to 4 concurrent order fills every 120ms (~20-30 ticks/sec)
+      const batchSize = Math.floor(Math.random() * 3) + 2;
+
+      for (let b = 0; b < batchSize; b++) {
+        let stock;
+        if (Math.random() < 0.5) {
+          const sym = highVolumeSymbols[Math.floor(Math.random() * highVolumeSymbols.length)];
+          stock = FULL_SIMULATION_UNIVERSE.find((s) => s.symbol === sym) || FULL_SIMULATION_UNIVERSE[0];
+        } else {
+          stock = FULL_SIMULATION_UNIVERSE[Math.floor(Math.random() * FULL_SIMULATION_UNIVERSE.length)];
         }
 
-        // If backend is offline, seed the entire 243-stock simulation universe immediately!
-        if (!hasData && mounted) {
-          const initialMap = {};
-          FULL_SIMULATION_UNIVERSE.forEach((item) => {
-            initialMap[item.symbol] = {
-              ...item,
-              tickDirection: 'none',
-              lastUpdated: Date.now(),
-            };
-            lastPricesRef.current[item.symbol] = item.price;
-          });
-          setMarketData(initialMap);
-          setConnectionStatus('CONNECTED');
-        }
+        // Geometric Brownian price motion with gentle mean reversion to prevClose
+        const meanReversionDrift = (stock.prevClose - stock.price) * 0.0008;
+        const randomShock = (Math.random() - 0.496) * 0.0035;
+        const deltaPct = randomShock + meanReversionDrift;
 
-        if (configRes.status === 'fulfilled' && configRes.value.ok) {
-          const cfg = await configRes.value.json();
-          if (mounted && cfg) {
-            setMarketConfig({
-              mode: cfg.marketData?.mode || cfg.marketDataMode || 'simulation',
-              provider: cfg.marketData?.provider || cfg.marketDataProvider || 'finnhub',
-              status: cfg.marketData?.status || cfg.marketDataStatus || 'ACTIVE'
-            });
-          }
-        }
-      } catch (err) {
-        if (mounted) {
-          const initialMap = {};
-          FULL_SIMULATION_UNIVERSE.forEach((item) => {
-            initialMap[item.symbol] = {
-              ...item,
-              tickDirection: 'none',
-              lastUpdated: Date.now(),
-            };
-            lastPricesRef.current[item.symbol] = item.price;
-          });
-          setMarketData(initialMap);
-          setConnectionStatus('CONNECTED');
-        }
+        const newPrice = Math.max(1.0, Number((stock.price * (1 + deltaPct)).toFixed(2)));
+        const change = Number((newPrice - stock.prevClose).toFixed(2));
+        const changePct = Number(((change / stock.prevClose) * 100).toFixed(2));
+
+        stock.price = newPrice;
+        stock.priceChange = change;
+        stock.priceChangePercent = changePct;
+        stock.openPrice = stock.openPrice || stock.prevClose || Number((newPrice * 0.996).toFixed(2));
+        stock.highPrice = Math.max(stock.highPrice || newPrice, newPrice);
+        stock.lowPrice = Math.min(stock.lowPrice || newPrice, newPrice);
+        stock.volume = (stock.volume || 500000) + Math.floor(Math.random() * 800) + 75;
+
+        // Realistic Technical Indicator Drift
+        const rsiDelta = (deltaPct > 0 ? 0.35 : -0.35) + (Math.random() - 0.5) * 0.4;
+        stock.rsi14 = Math.min(92, Math.max(12, Number((stock.rsi14 + rsiDelta).toFixed(1))));
+
+        const scoreDelta = (deltaPct > 0 ? 0.5 : -0.5) + (Math.random() - 0.5) * 0.6;
+        stock.convictionScore = Math.min(99, Math.max(15, Number((stock.convictionScore + scoreDelta).toFixed(1))));
+        stock.scoreCategory = stock.convictionScore >= 75 ? 'VERY_STRONG'
+          : stock.convictionScore >= 60 ? 'STRONG'
+          : stock.convictionScore >= 45 ? 'NEUTRAL'
+          : stock.convictionScore >= 30 ? 'WEAK' : 'VERY_WEAK';
+
+        stock.ready = true;
+
+        handleIncomingSnapshot({
+          ...stock,
+          timestamp: new Date().toISOString(),
+        });
       }
-    }
+    }, 120);
 
-    fetchInitialData();
-    // Re-verify health/status every 10 seconds
-    const statusInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/health`);
-        if (res.ok && mounted) {
-          const health = await res.json();
-          setMarketConfig((prev) => ({
-            ...prev,
-            mode: health.marketDataMode || prev.mode,
-            provider: health.marketDataProvider || prev.provider,
-            status: health.marketDataStatus || prev.status
-          }));
-        }
-      } catch (e) {}
-    }, 10000);
-
-    return () => {
-      mounted = false;
-      clearInterval(statusInterval);
-    };
-  }, []);
+    return () => clearInterval(simulationInterval);
+  }, [handleIncomingSnapshot]);
 
   /**
-   * STEP 2: STOMP OVER SOCKJS WEBSOCKET CONNECTION
-   * Connects to `/ws` on the backend and subscribes to real-time broadcast channels:
-   * - `/topic/market/all`: Stream of live ticks and calculated indicators
-   * - `/topic/alerts`: Live notifications when user alert thresholds are crossed
-   *
-   * FALLBACK POLLING SAFETY NET:
-   * If the WebSocket connection ever drops (e.g., poor WiFi, server restart),
-   * this code automatically falls back to polling `/api/stocks` every 2 seconds
-   * so the user's trading screen never freezes!
+   * OPTIONAL BACKEND REST & STOMP WEBSOCKET CONNECTION
+   * Only attempts connection if a valid API URL exists (avoiding mixed-content warnings on HTTPS).
    */
   useEffect(() => {
-    let client = null;
-    let fallbackInterval = null;
+    if (!WS_ENDPOINT) return;
 
+    let client = null;
+    let mounted = true;
+
+    // Fetch initial REST data from backend if available
+    async function fetchBackendData() {
+      try {
+        const res = await fetch(`${API_BASE}/api/stocks`, { signal: AbortSignal.timeout(2000) });
+        if (res.ok && mounted) {
+          const list = await res.json();
+          if (Array.isArray(list) && list.length > 0) {
+            list.forEach(handleIncomingSnapshot);
+          }
+        }
+      } catch (e) {}
+    }
+
+    fetchBackendData();
+
+    // Establish STOMP over SockJS connection
     try {
       client = new Client({
-        // SockJS provides fallback compatibility if native WebSocket is blocked
         webSocketFactory: () => new SockJS(WS_ENDPOINT),
-        reconnectDelay: 3000,      // Try to reconnect every 3 seconds if disconnected
-        heartbeatIncoming: 4000,   // Expect heartbeat ping from server every 4 seconds
-        heartbeatOutgoing: 4000,   // Send heartbeat ping to server every 4 seconds
-        debug: (str) => {
-          // Debug logs can be enabled here if troubleshooting network traffic
-        },
+        reconnectDelay: 5000,
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
         onConnect: () => {
+          if (!mounted) return;
+          isBackendConnectedRef.current = true;
           setConnectionStatus('CONNECTED');
-          // If fallback polling was running, shut it down now that live WS is back!
-          if (fallbackInterval) {
-            clearInterval(fallbackInterval);
-            fallbackInterval = null;
-          }
 
-          // Subscribe to live market ticks
           client.subscribe('/topic/market/all', (message) => {
             try {
               const snapshot = JSON.parse(message.body);
               handleIncomingSnapshot(snapshot);
-            } catch (e) {
-              console.error('Failed to parse STOMP message', e);
-            }
+            } catch (e) {}
           });
 
-          // Subscribe to live trade alerts
           client.subscribe('/topic/alerts', (message) => {
             try {
               const alertNotif = JSON.parse(message.body);
               setLatestAlertEvent(alertNotif);
-            } catch (e) {
-              console.error('Failed to parse alert notification', e);
-            }
+            } catch (e) {}
           });
         },
         onDisconnect: () => {
-          setConnectionStatus('DISCONNECTED');
+          isBackendConnectedRef.current = false;
         },
-        onStompError: (frame) => {
-          console.warn('STOMP error:', frame.headers['message']);
-          setConnectionStatus('DISCONNECTED');
+        onStompError: () => {
+          isBackendConnectedRef.current = false;
         },
         onWebSocketClose: () => {
-          // If backend WebSocket is offline, activate high-frequency realistic stock exchange streaming for all 243 stocks!
-          if (!fallbackInterval) {
-            let cycleCount = 0;
-            const highVolumeSymbols = ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'TATAMOTORS', 'NVDA', 'AAPL', 'MSFT', 'TSLA', 'ICICIBANK', 'BHARTIARTL', 'SBIN', 'ITC', 'LT', 'MARUTI', 'BAJFINANCE'];
-
-            fallbackInterval = setInterval(async () => {
-              cycleCount++;
-
-              // Poll backend REST periodically to check if backend is reachable
-              if (cycleCount % 25 === 0) {
-                try {
-                  const res = await fetch(`${API_BASE}/api/stocks`, { signal: AbortSignal.timeout(600) });
-                  if (res.ok) {
-                    const list = await res.json();
-                    if (Array.isArray(list) && list.length > 0) {
-                      list.forEach(handleIncomingSnapshot);
-                      setConnectionStatus('CONNECTED');
-                      return;
-                    }
-                  }
-                } catch (e) {}
-              }
-
-              // Realistic Multi-Stock Trade Batch (2 to 4 stocks tick simultaneously every 120ms = ~20-30 ticks/second!)
-              const batchSize = Math.floor(Math.random() * 3) + 2;
-              for (let b = 0; b < batchSize; b++) {
-                // 50% chance to pick a high-volume liquid market leader, 50% random across entire 243-stock universe
-                let stock;
-                if (Math.random() < 0.50) {
-                  const sym = highVolumeSymbols[Math.floor(Math.random() * highVolumeSymbols.length)];
-                  stock = FULL_SIMULATION_UNIVERSE.find((s) => s.symbol === sym) || FULL_SIMULATION_UNIVERSE[0];
-                } else {
-                  stock = FULL_SIMULATION_UNIVERSE[Math.floor(Math.random() * FULL_SIMULATION_UNIVERSE.length)];
-                }
-
-                // Realistic Brownian price motion with gentle mean-reversion toward prevClose
-                const meanReversionDrift = (stock.prevClose - stock.price) * 0.0008;
-                const randomShock = (Math.random() - 0.496) * 0.0035;
-                const deltaPct = randomShock + meanReversionDrift;
-
-                const newPrice = Math.max(1.0, Number((stock.price * (1 + deltaPct)).toFixed(2)));
-                const change = Number((newPrice - stock.prevClose).toFixed(2));
-                const changePct = Number(((change / stock.prevClose) * 100).toFixed(2));
-                
-                stock.price = newPrice;
-                stock.priceChange = change;
-                stock.priceChangePercent = changePct;
-                stock.openPrice = stock.openPrice || stock.prevClose || Number((newPrice * 0.996).toFixed(2));
-                stock.highPrice = Math.max(stock.highPrice || newPrice, newPrice);
-                stock.lowPrice = Math.min(stock.lowPrice || newPrice, newPrice);
-                stock.volume = (stock.volume || 500000) + Math.floor(Math.random() * 800) + 75;
-                
-                // Realistic Indicator Drift
-                const rsiDelta = (deltaPct > 0 ? 0.35 : -0.35) + (Math.random() - 0.5) * 0.4;
-                stock.rsi14 = Math.min(92, Math.max(12, Number((stock.rsi14 + rsiDelta).toFixed(1))));
-                
-                const scoreDelta = (deltaPct > 0 ? 0.5 : -0.5) + (Math.random() - 0.5) * 0.6;
-                stock.convictionScore = Math.min(99, Math.max(15, Number((stock.convictionScore + scoreDelta).toFixed(1))));
-                stock.scoreCategory = stock.convictionScore >= 75 ? 'VERY_STRONG'
-                  : stock.convictionScore >= 60 ? 'STRONG'
-                  : stock.convictionScore >= 45 ? 'NEUTRAL'
-                  : stock.convictionScore >= 30 ? 'WEAK' : 'VERY_WEAK';
-
-                stock.ready = true;
-
-                handleIncomingSnapshot({
-                  ...stock,
-                  timestamp: new Date().toISOString()
-                });
-              }
-
-              setConnectionStatus('CONNECTED');
-            }, 120); // 120ms tick loop = realistic institutional tick stream
-          }
+          isBackendConnectedRef.current = false;
         },
       });
 
       client.activate();
       clientRef.current = client;
-    } catch (err) {
-      console.warn('WebSocket setup exception:', err);
-      setConnectionStatus('DISCONNECTED');
+    } catch (e) {
+      isBackendConnectedRef.current = false;
     }
 
-    // CLEANUP FUNCTION: Cleanly close connection when user leaves the page
     return () => {
+      mounted = false;
       if (client) {
         client.deactivate();
-      }
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
       }
     };
   }, [handleIncomingSnapshot]);
 
-  // Expose these state values to whatever React component calls this hook!
   return {
     marketData,
     connectionStatus,
@@ -369,4 +245,5 @@ export function useQuantStreamWebSocket() {
     apiBase: API_BASE,
   };
 }
+
 
