@@ -27,16 +27,28 @@
  * ==============================================================================
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Plus, Trash2, Power, AlertTriangle, RotateCcw, History, Search, CheckCircle2, AlertCircle } from 'lucide-react';
+import { FULL_SIMULATION_UNIVERSE } from '../lib/simulationUniverse';
+
+// ---- localStorage helpers for offline resilience ----
+const LS_KEY_ALERTS = 'quantstream_alerts';
+const LS_KEY_ALERT_HISTORY = 'quantstream_alert_history';
+const loadLocal = (key) => { try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; } };
+const saveLocal = (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ } };
 
 export default function AlertsManager({ apiBase, latestAlertEvent }) {
   // List of active and triggered user alerts
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts] = useState(() => loadLocal(LS_KEY_ALERTS));
   // Audit log of past triggered alert events
-  const [historyItems, setHistoryItems] = useState([]);
+  const [historyItems, setHistoryItems] = useState(() => loadLocal(LS_KEY_ALERT_HISTORY));
   // Supported stock symbols for validation & autocomplete
-  const [supportedInstruments, setSupportedInstruments] = useState([]);
+  // Seeded with FULL_SIMULATION_UNIVERSE so autocomplete works even without backend
+  const [supportedInstruments, setSupportedInstruments] = useState(
+    () => FULL_SIMULATION_UNIVERSE.map(s => ({ symbol: s.symbol, companyName: s.companyName }))
+  );
+  // Track whether backend is reachable
+  const [backendOnline, setBackendOnline] = useState(true);
   // Loading spinner state
   const [loading, setLoading] = useState(false);
   
@@ -60,32 +72,38 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
 
   const endpoint = apiBase || 'http://localhost:8080';
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${endpoint}/api/alerts`);
       if (res.ok) {
         const data = await res.json();
         setAlerts(data || []);
+        saveLocal(LS_KEY_ALERTS, data || []);
+        setBackendOnline(true);
       }
     } catch (e) {
-      console.debug('Failed to fetch alerts', e);
+      console.debug('Backend unreachable, using localStorage alerts');
+      setBackendOnline(false);
+      setAlerts(loadLocal(LS_KEY_ALERTS));
     } finally {
       setLoading(false);
     }
-  };
+  }, [endpoint]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await fetch(`${endpoint}/api/alerts/history`);
       if (res.ok) {
         const data = await res.json();
         setHistoryItems(data || []);
+        saveLocal(LS_KEY_ALERT_HISTORY, data || []);
       }
     } catch (e) {
-      console.debug('Failed to fetch alert history', e);
+      console.debug('Using localStorage alert history');
+      setHistoryItems(loadLocal(LS_KEY_ALERT_HISTORY));
     }
-  };
+  }, [endpoint]);
 
   // Load supported instruments for universe validation and autocomplete
   useEffect(() => {
@@ -94,13 +112,17 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
         const res = await fetch(`${endpoint}/api/instruments/active`);
         if (res.ok) {
           const list = await res.json();
-          setSupportedInstruments(list || []);
-          if (list.length > 0 && !symbol) {
-            setSymbol(list[0].symbol);
+          if (list && list.length > 0) {
+            setSupportedInstruments(list);
+            if (!symbol) setSymbol(list[0].symbol);
           }
         }
       } catch (e) {
-        console.debug('Failed to load instrument registry for alerts', e);
+        // Already seeded with FULL_SIMULATION_UNIVERSE — just set default symbol
+        console.debug('Using local simulation universe for alert instrument autocomplete');
+        if (!symbol && FULL_SIMULATION_UNIVERSE.length > 0) {
+          setSymbol(FULL_SIMULATION_UNIVERSE[0].symbol);
+        }
       }
     }
     loadInstruments();
@@ -230,22 +252,49 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
         setErrorMsg(err.error || 'Failed to create alert');
       }
     } catch (err) {
-      setErrorMsg('Network error connecting to backend');
+      // ---- OFFLINE FALLBACK: persist alert to localStorage ----
+      console.debug('Backend unreachable, saving alert locally');
+      const newAlert = {
+        id: Date.now(),
+        symbol: normalizedSym,
+        conditionType,
+        threshold: Number(threshold),
+        enabled: true,
+        triggered: false,
+        createdAt: new Date().toISOString()
+      };
+      const updated = [...alerts, newAlert];
+      setAlerts(updated);
+      saveLocal(LS_KEY_ALERTS, updated);
+      setBackendOnline(false);
+      setStatusMsg('Alert saved locally (backend offline)');
+      setThreshold('');
+      setErrorMsg(null);
+      setTimeout(() => setStatusMsg(null), 4000);
     }
   };
 
   const handleToggle = async (id) => {
+    // Optimistic local toggle
+    const updated = alerts.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a);
+    setAlerts(updated);
+    saveLocal(LS_KEY_ALERTS, updated);
     try {
       await fetch(`${endpoint}/api/alerts/${id}/toggle`, {
         method: 'PUT'
       });
       fetchAlerts();
     } catch (err) {
-      console.error('Failed to toggle alert', err);
+      console.debug('Toggle persisted locally only (backend offline)');
+      setBackendOnline(false);
     }
   };
 
   const handleReset = async (id) => {
+    // Optimistic local reset
+    const updated = alerts.map(a => a.id === id ? { ...a, triggered: false, enabled: true, triggeredValue: null, triggeredAt: null } : a);
+    setAlerts(updated);
+    saveLocal(LS_KEY_ALERTS, updated);
     try {
       const res = await fetch(`${endpoint}/api/alerts/${id}/reset`, {
         method: 'PUT'
@@ -256,20 +305,26 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
         setTimeout(() => setStatusMsg(null), 3000);
       }
     } catch (err) {
-      console.error('Failed to reset alert', err);
+      console.debug('Reset persisted locally only (backend offline)');
+      setBackendOnline(false);
+      setStatusMsg('Alert re-armed locally (backend offline)');
+      setTimeout(() => setStatusMsg(null), 3000);
     }
   };
 
   const handleDelete = async (id) => {
     // Optimistic UI update
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    const updated = alerts.filter((a) => a.id !== id);
+    setAlerts(updated);
+    saveLocal(LS_KEY_ALERTS, updated);
     try {
       await fetch(`${endpoint}/api/alerts/${id}`, {
         method: 'DELETE'
       });
       fetchAlerts();
     } catch (err) {
-      console.error('Failed to delete alert', err);
+      console.debug('Delete persisted locally only (backend offline)');
+      setBackendOnline(false);
     }
   };
 
@@ -283,7 +338,7 @@ export default function AlertsManager({ apiBase, latestAlertEvent }) {
             AUTONOMOUS ALERT TRIGGERS
           </h2>
           <p className="section-subtitle">
-            One-shot threshold execution evaluated on every tick by the stream worker pool
+            {backendOnline ? 'One-shot threshold execution evaluated on every tick by the stream worker pool' : 'Running in simulation mode — alerts saved locally in your browser'}
           </p>
         </div>
         <button

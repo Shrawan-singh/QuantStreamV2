@@ -25,15 +25,30 @@
  * ==============================================================================
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bookmark, Plus, Trash2, ExternalLink, Search, Check, AlertCircle } from 'lucide-react';
 import { currencySymbol } from '../lib/marketUtils';
+import { FULL_SIMULATION_UNIVERSE } from '../lib/simulationUniverse';
+
+// ---- localStorage helpers for offline resilience ----
+const LS_KEY_WATCHLIST = 'quantstream_watchlist';
+const loadLocalWatchlist = () => {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_WATCHLIST)) || []; } catch { return []; }
+};
+const saveLocalWatchlist = (items) => {
+  try { localStorage.setItem(LS_KEY_WATCHLIST, JSON.stringify(items)); } catch { /* quota */ }
+};
 
 export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarketData, marketConfig }) {
   // Array of saved watchlist items loaded from the database: [ { id, symbol, notes, createdAt }, ... ]
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => loadLocalWatchlist());
   // Full list of valid stocks supported by the backend (used for autocomplete)
-  const [supportedInstruments, setSupportedInstruments] = useState([]);
+  // Seeded with FULL_SIMULATION_UNIVERSE so autocomplete works even without backend
+  const [supportedInstruments, setSupportedInstruments] = useState(
+    () => FULL_SIMULATION_UNIVERSE.map(s => ({ symbol: s.symbol, companyName: s.companyName }))
+  );
+  // Track whether backend is reachable for this session
+  const [backendOnline, setBackendOnline] = useState(true);
   // Loading spinner state while calling the database
   const [loading, setLoading] = useState(false);
   // Input fields for adding a new stock
@@ -49,20 +64,24 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
   const endpoint = apiBase || 'http://localhost:8080';
 
   // Fetch watchlist from PostgreSQL
-  const fetchWatchlist = async () => {
+  const fetchWatchlist = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${endpoint}/api/watchlist`);
       if (res.ok) {
         const data = await res.json();
         setItems(data || []);
+        saveLocalWatchlist(data || []);
+        setBackendOnline(true);
       }
     } catch (e) {
-      console.debug('Failed to fetch watchlist', e);
+      console.debug('Backend unreachable, using localStorage watchlist');
+      setBackendOnline(false);
+      setItems(loadLocalWatchlist());
     } finally {
       setLoading(false);
     }
-  };
+  }, [endpoint]);
 
   // Fetch supported instruments universe for autocomplete
   useEffect(() => {
@@ -71,10 +90,13 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
         const res = await fetch(`${endpoint}/api/instruments/active`);
         if (res.ok) {
           const list = await res.json();
-          setSupportedInstruments(list || []);
+          if (list && list.length > 0) {
+            setSupportedInstruments(list);
+          }
         }
       } catch (e) {
-        console.debug('Failed to load instrument registry', e);
+        // Already seeded with FULL_SIMULATION_UNIVERSE — no action needed
+        console.debug('Using local simulation universe for instrument autocomplete');
       }
     }
     loadInstruments();
@@ -157,7 +179,17 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
         setErrorMsg(err.error || 'Instrument not found in the supported market universe.');
       }
     } catch (err) {
-      setErrorMsg('Network error connecting to backend');
+      // ---- OFFLINE FALLBACK: persist to localStorage ----
+      console.debug('Backend unreachable, saving watchlist item locally');
+      const newItem = { id: Date.now(), symbol: normalized, notes: notesInput.trim(), createdAt: new Date().toISOString() };
+      const updated = [...items, newItem];
+      setItems(updated);
+      saveLocalWatchlist(updated);
+      setBackendOnline(false);
+      setSymbolInput('');
+      setNotesInput('');
+      setShowDropdown(false);
+      setErrorMsg(null);
     }
   };
 
@@ -176,10 +208,16 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
         // Rollback on failure
         setItems(previousItems);
         setErrorMsg('Failed to remove symbol from database');
+      } else {
+        // Sync localStorage after successful backend delete
+        saveLocalWatchlist(items.filter((i) => i.symbol.toUpperCase() !== targetSym));
       }
     } catch (e) {
-      setItems(previousItems);
-      setErrorMsg('Network error deleting watchlist item');
+      // ---- OFFLINE FALLBACK: remove from localStorage ----
+      const offlineUpdated = items.filter((i) => i.symbol.toUpperCase() !== targetSym);
+      setItems(offlineUpdated);
+      saveLocalWatchlist(offlineUpdated);
+      setBackendOnline(false);
     }
   };
 
@@ -193,7 +231,7 @@ export default function WatchlistManager({ apiBase, onSelectSymbol, currentMarke
             PERSONAL WATCHLIST
           </h2>
           <p className="section-subtitle">
-            Curated custom instruments persisted in PostgreSQL with live analytics overlay
+            {backendOnline ? 'Curated custom instruments persisted in PostgreSQL with live analytics overlay' : 'Running in simulation mode — data saved locally in your browser'}
           </p>
         </div>
         <div className="text-secondary mono" style={{ fontSize: '0.75rem' }}>
